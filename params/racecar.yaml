@@ -1,0 +1,22 @@
+m: 1000 #[kg]
+#lf: 1.26 #[m]
+#lr: 1.41 #[m]
+lf: 1.33 #[m]
+lr: 1.34 #[m]
+
+Iz:  1786.5 #[kg*m^3]
+width: 1.5
+wheel_radius: 0.335
+#wheel_inertia: 0.000004
+
+
+
+d_max: 1.0
+d_min: -1.0
+v_max: 44.4
+v_min: 0.00
+delta_min: -0.436  # minimum steering angle [rad]
+delta_max: 0.436
+delta_dot_min: -6.28
+delta_dot_max: 6.28
+
