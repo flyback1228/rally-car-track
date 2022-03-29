@@ -48,9 +48,10 @@ vehicle_width = params['width']
 
 #initial boundary
 tau0 = 4
+v0 = 10
 phi0 =track.getPhiFromT(tau0)
 #x = [t,n,phi,vx,vy,omega,steer,front_wheel_speed,rear_wheel_speed]
-X0 = casadi.DM([tau0,0,phi0,0.2,0,0,0,0.2/params['wheel_radius'],0.2/params['wheel_radius']])
+X0 = casadi.DM([tau0,0,phi0,v0,0,0,0,v0/params['wheel_radius'],v0/params['wheel_radius']])
 
 #data save to sql
 con = sqlite3.connect('output/sql_data.db')
@@ -62,7 +63,7 @@ cur.execute("CREATE TABLE {} (computation_time real,phi real, vx real, vy real, 
 N = 20
 nx = model.nx
 nu = model.nu
-T = 1.0
+T = 2.0
 dt = T/N
 ds = T*v_max
 t = np.linspace(0,1,N+1)
@@ -135,7 +136,7 @@ def optimize(X0,forward_N):
     opti = casadi.Opti()
     X = opti.variable(nx,N+1)
     U = opti.variable(nu,N)
-    X_dot = opti.variable(nx,N)
+    #X_dot = opti.variable(nx,N)
     
     #X = [tau,n,phi,v]
     tau = X[0,:]
@@ -168,17 +169,17 @@ def optimize(X0,forward_N):
     #objective
     #opti.minimize(-10*tau[-1])
     #opti.minimize(casadi.dot(delta_dot,delta_dot)*0.01 + casadi.dot(n,n)*0.01-10*tau[-1])
-    opti.minimize(casadi.dot(delta_dot,delta_dot)*0.1  -10*(tau[-1]-ref_tau[-1]) + casadi.dot(front_brake,front_brake)*0.1 +casadi.dot(rear_brake,rear_brake)*0.1 )
+    opti.minimize(casadi.dot(delta_dot,delta_dot)*0.1 -10*(tau[-1]-ref_tau[-1]) + casadi.dot(front_brake,front_brake)*0.1 +casadi.dot(rear_brake,rear_brake)*0.1 )
     
     for k in range(N):
         #x_next = X[:,k] + dt*model.update(X[:,k],U[:,k])
-        X_dot[:,k] = model.update(X[:,k],U[:,k])              
-        x_next = X[:,k] + dt*X_dot[:,k]          
-        #k1 = model.update(X[:,k],U[:,k])
-        #k2 = model.update(X[:,k]+dt/2*k1,U[:,k])
-        #k3 = model.update(X[:,k]+dt/2*k2,U[:,k])
-        #k4 = model.update(X[:,k]+dt*k3,U[:,k])
-        #x_next = X[:,k] + dt/6*(k1+2*k2+2*k3+k4) 
+        #X_dot[:,k] = model.update(X[:,k],U[:,k])              
+        #x_next = X[:,k] + dt*X_dot[:,k]          
+        k1 = model.update(X[:,k],U[:,k])
+        k2 = model.update(X[:,k]+dt/2*k1,U[:,k])
+        k3 = model.update(X[:,k]+dt/2*k2,U[:,k])
+        k4 = model.update(X[:,k]+dt*k3,U[:,k])
+        x_next = X[:,k] + dt/6*(k1+2*k2+2*k3+k4) 
         #dynamic function constraints
         opti.subject_to(X[:,k+1]==x_next)  
         
@@ -367,7 +368,7 @@ def optimize(X0,forward_N):
 
     
 if __name__=='__main__':
-    total_time = 0.5
+    total_time = 35
     total_frame = int(total_time*N/T)
     for i in range(total_frame):
         X0 =optimize(X0,1)

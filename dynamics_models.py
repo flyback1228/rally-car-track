@@ -694,7 +694,7 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         
         #Fz need work
         #Fz = casadi.veccat(0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81)
-        Fz = casadi.DM.ones(2)*4*self.mass*9.81
+        Fz = casadi.DM.ones(2)*self.mass*9.81/2
         
         #Ff = self.front_tire_model.getForce(alpha[0],vx,d)
         #Fr = self.rear_tire_model.getForce(alpha[1],vx,d)
@@ -810,7 +810,7 @@ class BicycleDynamicsModelTwoWheelDriveWithBrakeXY(DynamicsModel):
         
         #Fz need work
         #Fz = casadi.veccat(0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81)
-        Fz = casadi.DM.ones(2)*4*self.mass*9.81
+        Fz = casadi.DM.ones(2)*self.mass*9.81/2
         
         #Ff = self.front_tire_model.getForce(alpha[0],vx,d)
         #Fr = self.rear_tire_model.getForce(alpha[1],vx,d)
@@ -821,7 +821,7 @@ class BicycleDynamicsModelTwoWheelDriveWithBrakeXY(DynamicsModel):
         
         px_dot = vx*casadi.cos(phi)-vy*casadi.sin(phi)
         py_dot = vx*casadi.sin(phi)+vy*casadi.cos(phi)      
-        phi_dot = omega
+        #phi_dot = omega
         
         #vx_dot = 1/self.mass * (0 + K*casadi.cos(steer) - Ff[1]*casadi.sin(steer) + self.mass*vy*omega)   #vxdot
         #vy_dot = 1/self.mass * (Fr[1] + K*casadi.sin(steer) + Ff[1]*casadi.cos(steer) - self.mass*vx*omega)  #vydot        
@@ -842,7 +842,7 @@ class BicycleDynamicsModelTwoWheelDriveWithBrakeXY(DynamicsModel):
         dot_x = casadi.veccat(
             px_dot,
             py_dot,
-            phi_dot,
+            omega,
             vx_dot,
             vy_dot,
             omega_dot,

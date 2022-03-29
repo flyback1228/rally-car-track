@@ -3,10 +3,11 @@ from matplotlib.pyplot import figure
 from track import *
 from dynamics_models import *
 from tire_model import *
+import yaml
     
 def testBicycleTwoWheelDriveXYForward():
-    #x = [px,py,phi,vx,vy,omega,steer,throttle,wheel_speed]
-    #u = [delta,d]
+    #x = [px,py,phi,vx,vy,omega,steer,front_wheel,rear_wheel_speed]
+    #u = [delta,d,front_brake,rear_brake]
     
     
     #define tire mode
@@ -21,7 +22,7 @@ def testBicycleTwoWheelDriveXYForward():
     #define model
     with open('params/racecar.yaml') as file:
         params = yaml.load(file)
-    model = BicycleDynamicsModelTwoWheelDriveXY(params,front_tire_model,rear_tire_model)
+    model = BicycleDynamicsModelTwoWheelDriveWithBrakeXY(params,front_tire_model,rear_tire_model)
     
     #parameters
     d_min = params['d_min']
@@ -35,14 +36,15 @@ def testBicycleTwoWheelDriveXYForward():
     delta_dot_min = params['delta_dot_min']  # minimum steering angle [rad]
     delta_dot_max = params['delta_dot_max']
 
-    X0 = casadi.DM([0,0,0,0.2,0,0,0.1,0,0.2/params['wheel_radius']])
-    u = [0.0,1.1]
+    v0 = 0.5
+    X0 = casadi.DM([0,0,0,v0,0,0,0.0,v0/params['wheel_radius'],v0/params['wheel_radius']])
+    u = [0.0,0.5,0,0]
     
     
     
     #ocp params
-    T = 80
-    N = 200*T
+    T = 200
+    N = 20*T
     nx = model.nx
     nu = model.nu
     
@@ -58,8 +60,14 @@ def testBicycleTwoWheelDriveXYForward():
     X[:,0]=X0
     #X[:,0] = [0,0,0,0.2,0,0,0,0,0.2/params['wheel_radius']]
     for k in range(N):
-        X_dot[:,k] = model.update(X[:,k],u)
+        k1 = model.update(X[:,k],u)
+        k2 = model.update(X[:,k]+dt/2*k1,u)
+        k3 = model.update(X[:,k]+dt/2*k2,u)
+        k4 = model.update(X[:,k]+dt*k3,u)
+        #X_dot[:,k] = model.update(X[:,k],u)
+        X_dot[:,k] = (k1+2*k2+2*k3+k4)/6
         X[:,k+1] = X[:,k] + dt*X_dot[:,k]
+    
         
     px = X[0,:].T
     py = X[1,:].T
@@ -68,12 +76,12 @@ def testBicycleTwoWheelDriveXYForward():
     vy = X[4,:].T
     omega = X[5,:].T
     delta = X[6,:].T
-    d = X[7,:].T
-    wheel_omega = X[8,:].T   
+    front_wheel_omega = X[7,:].T
+    rear_wheel_omega = X[8,:].T   
     
     omega_dot = X_dot[5,:].T
 
-    Fz = casadi.DM.ones(2)*4*params['m']*9.81
+    Fz = casadi.DM.ones(2)*params['m']*9.81/2
        
     
     figure()
@@ -85,15 +93,17 @@ def testBicycleTwoWheelDriveXYForward():
     figure()
     plt.plot(vx,label="vx")
     plt.plot(vy,label="vy")
-    plt.plot(wheel_omega*params['wheel_radius'],label="wheel speed")
+    plt.plot(front_wheel_omega*params['wheel_radius'],label="front wheel speed")
+    plt.plot(rear_wheel_omega*params['wheel_radius'],label="rear wheel speed")
     plt.legend()
     
     figure()
-    plt.plot(X_dot[8,:].T,label="wheel_omega_dot")
+    plt.plot(X_dot[7,:].T,label="front_wheel_omega_dot")
+    plt.plot(X_dot[8,:].T,label="rear_wheel_omega_dot")
     plt.legend()
         
-    lamb1 = -1+ params['wheel_radius']*wheel_omega/casadi.sqrt(casadi.fmax(vy+omega*params['lf']**2 + vx**2,0.001))
-    lamb2 = -1+ params['wheel_radius']*wheel_omega/casadi.sqrt(casadi.fmax(vy-omega*params['lr']**2 + vx**2,0.001))
+    lamb1 = -1+ params['wheel_radius']*front_wheel_omega/casadi.sqrt(casadi.fmax(vy+omega*params['lf']**2 + vx**2,0.01))
+    lamb2 = -1+ params['wheel_radius']*rear_wheel_omega/casadi.sqrt(casadi.fmax(vy-omega*params['lr']**2 + vx**2,0.01))
     
     alpha1 = -casadi.atan2(omega*params['lf'] + vy, vx+0.01) + delta
     alpha2 = casadi.atan2(omega*params['lr'] - vy,vx+0.01)   
