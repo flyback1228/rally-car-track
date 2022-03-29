@@ -327,7 +327,7 @@ if __name__ == '__main__':
     
     v = np.array([np.linalg.norm(my_track.getTangentVec(t)) for t in ts]).reshape(len(ts))
     
-    plt.plot(ts,v)
+    #plt.plot(ts,v)
     #angle = np.linspace(-4*np.pi,4*np.pi,100)
     #at = np.(angle, 1)
     #fig4 = plt.figure()

@@ -1,9 +1,7 @@
-from cmath import pi
 import json
 import asyncio
 import websockets
 import csv
-import matplotlib.pyplot as plt
 from track import SymbolicTrack
 import yaml
 from dynamics_models import BicycleKineticModelByParametricArc
@@ -16,13 +14,13 @@ from datetime import datetime
 track_width = 6.0
 track = SymbolicTrack('tracks/temp.csv',track_width)
 with open('params/racecar.yaml') as file:
-        params = yaml.load(file)
+    params = yaml.load(file)
 
 d_min = params['d_min']
 d_max = params['d_max']
 v_min = params['v_min']
 v_max = params['v_max']
-delta_min = params['delta_min']  # minimum steering angle [rad]
+delta_min = params['delta_min']
 delta_max = params['delta_max']
 model = BicycleKineticModelByParametricArc(params,track)
 
@@ -34,11 +32,37 @@ estimated_states=[]
 steering = 0
 throttle = 0
 
-N = 20
-T = 0.7
-dt = T/N
+N = 12
+dt = 0.06
 nx = model.nx
 nu = model.nu
+
+first_it = True
+
+
+def getRef(x0):
+    X_ref = casadi.DM(nx,N+1)
+    #U_ref = casadi.DM(nu,N)  
+    v0 = float(x0[3])
+    tau0=float(x0[0])
+    n0=float(x0[1])
+    s0 = track.getSFromT(tau0%track.max_t)
+    
+    X_ref[:,0]=x0
+    for i in range(N):
+        vt = min(v_max,v0 + 5.9*d_max*dt)
+        st = (s0 + (v0+vt)*dt/2)%track.max_s
+        tau_t = track.getTFromS(st)
+        while(tau_t<tau0):
+            tau_t = tau_t+ track.max_t
+        phi_t = track.getPhiFromT(tau_t)
+        nt = n0-(i+1)*n0/N
+
+        X_ref[:,i+1] = casadi.DM([tau0,nt,phi_t,vt])
+        v0 = vt
+        s0=st
+        tau0 = tau_t
+    return X_ref
 
 
 estimate_dt = dt+0.02
@@ -50,7 +74,6 @@ integrator = casadi.integrator('F','cvodes',dae,{'tf':dt})
 estimate_integrator = casadi.integrator('F','cvodes',dae,{'tf':estimate_dt})
 
 start_time = int(1000*time.time())
- 
 
 x_guess = casadi.DM.zeros(nx,N+1)
 u_guess = casadi.DM.zeros(nu,N)
@@ -102,7 +125,7 @@ def _parse_telemetry(msg):
 
     
 async def control_loop(ws):
-    global steering,throttle,last_mpc_u,last_mpc_x,x_guess,u_guess,option,estimate_dt,start_time
+    global steering,throttle,last_mpc_u,last_mpc_x,x_guess,u_guess,option,estimate_dt,start_time,first_it
     async for message in ws:
         
         #dae = {'x':X, 'p':U, 'ode':model.update(X,U)}
@@ -110,16 +133,7 @@ async def control_loop(ws):
       
         if _check_mode(message) == 'Auto':                
             msg_type,telemetry  = _parse_telemetry(message)
-            if(not msg_type):
-                data={}
-                #data['track_x'] = ','.join("{:0.4f}".format(track.center_line[10*i,0]) for i in range(int(len(track.center_line)/10)))
-                #data['track_y'] = ','.join("{:0.4f}".format(track.center_line[10*i,1]) for i in range(int(len(track.center_line)/10)))
-
-                #json_str = json.dumps(data)
-                #msg = "42[\"track\"," + json_str + "]"
-                #print('send'+msg)
-                #await ws.send(msg)  
-            else:
+            if(msg_type):
                 opti = casadi.Opti()
                 X = opti.variable(nx,N+1)
                 U = opti.variable(nu,N) 
@@ -136,9 +150,7 @@ async def control_loop(ws):
                 x = float(telemetry['x'])
                 y = float(telemetry['y'])
 
-                
-                
-
+                                
                 #initial boundary
                 real_tau,real_n = track.convertXYtoTN((x,y))
                 real_state = casadi.DM([real_tau,real_n,phi0,v0])
@@ -158,33 +170,6 @@ async def control_loop(ws):
                 #Fk = estimate_integrator(x0=real_state, p=real_u)
                 #estimate_state = Fk['xf']
                 
-                #dtau = float(tau0 + v0*casadi.cos(phi0-phi_c+steering)/(casadi.norm_2(tangent_vec)*(1-n0*kappa)) *estimate_dt)
-                #dn = float(n0 + v0*casadi.sin(phi0-phi_c+steering) *estimate_dt)
-                #dphi = float(phi0 + v0/(params['lf']+params['lr']) * casadi.tan(steering)*estimate_dt)
-                #dv = casadi.fmin(float(v0 + (5.5*throttle-0.1*v0)*estimate_dt),v_max)
-                
-                #estimated_state = np.array([dtau,dn,dphi,dv])
-                #estimated_states.append(estimated_state)
-                #print('estimated_state: '+str(estimated_state))
-                                
-
-                #if tau0<0:
-                #    print("car is not on the track")
-                #    return                
-                
-                                    
-                #ocp params
-                
-                
-
-                #define ocp 
-                
-
-                #X0 = casadi.DM(estimated_state)
-                #print('X0=' + str(X0))
-
-                U0 = casadi.DM([steering,throttle])   
-                #print('U0=' + str(U0))         
                 
                 #x0_guess = casadi.DM(estimated_state)
                 x0_guess = estimate_state
@@ -203,6 +188,15 @@ async def control_loop(ws):
                 u_guess[:,0:-1] = last_mpc_u[:,1:]
                 u_guess[:,-1]=u_guess[:,-2]
 
+                X_ref = getRef(x0_guess)
+                #if(first_it):
+                #    X_ref = getRef(x0_guess)
+                #    first_it = False
+                #else:
+                #    X_ref = x0_guess
+
+                
+
                 opti.set_initial(X,x_guess)
                 opti.set_initial(U,u_guess)
 
@@ -218,26 +212,23 @@ async def control_loop(ws):
                 delta = U[0,:]
                 d = U[1,:]
 
-                
-                #dtau = 2
-                ds = T*v_max/2
-                t = np.linspace(0,1,N+1)
 
+                ds = N*dt*v_max    
                 tau0 = float(estimate_state[0])
-                n0 = float(estimate_state[1])
-                v0 = float(estimate_state[3])
                 #target boundary    
                 s0 = track.getSFromT(tau0%track.max_t)
                 st = (s0 + ds)%track.max_s        
                 tau_t = float(track.getTFromS(st))
                 while tau_t<tau0:
-                    tau_t = tau_t + track.max_t 
-                ref_tau = casadi.DM(np.linspace(tau0,tau_t,N+1)).T
+                    tau_t = tau_t + track.max_t                 
 
-                #objective
-                #opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.000001*casadi.dot(n[-1],n[-1]) + 0.001*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
-                opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.000001*casadi.dot(n,n)+ 0.01*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
-                #opti.minimize(-0.04*(tau[-1]-ref_tau[-1]))
+                tau_error = tau - X_ref[0,:]
+                n_error=n-X_ref[1,:]
+                phi_error = casadi.cos(phi)*casadi.cos(X_ref[2,:]) + casadi.sin(phi)*casadi.sin(X_ref[2,:])
+                #opti.minimize(0.1*casadi.dot(tau_error,tau_error) +10*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+                opti.minimize(0.4*casadi.dot(tau[-1]-tau_t,tau[-1]-tau_t) + 0.01*casadi.dot(tau_error,tau_error) + 0.0001*casadi.dot(n_error,n_error) - 0.1*casadi.dot(phi_error,phi_error)+100*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+                #opti.minimize(0.01*casadi.dot(tau_error,tau_error) + 0.001*casadi.dot(n_error,n_error) +50*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+
 
                 for k in range(N):
                     #k1 = model.update(X[:,k],U[:,k])
@@ -256,7 +247,7 @@ async def control_loop(ws):
 
                 #state bound
                 n_v = casadi.fmax(v_max,casadi.fabs(v0))
-                n_c = casadi.fmax(track_width/2,casadi.fabs(n0))
+                n_c = casadi.fmax(track_width/2,casadi.fabs(real_n))
                 #print('nv = '+str(n_v))
                 #opti.subject_to(opti.bounded(v_min,v[0:-1],n_v+0.1))
                 #opti.subject_to(opti.bounded(v_min,v[-1],v_max))
