@@ -636,7 +636,13 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         self.lf = params['lf']
         self.lr = params['lr']
         self.wheel_radius = params['wheel_radius']
-        self.wheel_inertia = params['wheel_inertia']
+        #self.wheel_inertia = params['wheel_inertia']
+        
+        key='wheel_radius'
+        if key in params:
+            self.wheel_inertia = params['wheel_inertia']
+        else:
+            self.wheel_inertia = params['wheel_mass']*self.wheel_radius*self.wheel_radius
         self.mass = params['m']
         self.Iz = params['Iz']
         self.a = 1
@@ -647,7 +653,7 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         
     
     def update(self, x, u):
-        #x = [t,n,phi,vx,vy,omega,steer,throttle,front_left_wheel_speed,front_right_wheel_speed,rear_left_wheel_speed,rear_right_wheel_speed]
+        #x = [t,n,phi,vx,vy,omega,steer,front_left_wheel_speed,front_right_wheel_speed,rear_left_wheel_speed,rear_right_wheel_speed]
         #u = [delta,d,front_left_brake,front_right_brake,rear_left_brake,rear_right_brake]
         t = x[0]
         n = x[1]
@@ -731,7 +737,121 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         )
         return dot_x
         
+
+class BicycleDynamicsModelTwoWheelDriveWithBrakeXY(DynamicsModel):
+    def __init__(self, params,front_tire_model,rear_tire_model) -> None:        
+        self.nu = 4
+        self.nx = 9
+        
+        
+        self.front_tire_model = front_tire_model
+        self.rear_tire_model = rear_tire_model
+
+        self.Cm1 = params['Cm1']
+        self.Cm2 = params['Cm2']
+        self.Croll = params['Croll']
+        self.Cd = params['Cd']
+        
+        self.lf = params['lf']
+        self.lr = params['lr']
+        self.wheel_radius = params['wheel_radius']
+        #self.wheel_inertia = params['wheel_inertia']
+        
+        key='wheel_radius'
+        if key in params:
+            self.wheel_inertia = params['wheel_inertia']
+        else:
+            self.wheel_inertia = params['wheel_mass']*self.wheel_radius*self.wheel_radius
+        self.mass = params['m']
+        self.Iz = params['Iz']
+        self.a = 1
+        self.b = 0.1
+        self.kc = 0.2
+        
+        
+        
+    
+    def update(self, x, u):
+        #x = [t,n,phi,vx,vy,omega,steer,front_left_wheel_speed,front_right_wheel_speed,rear_left_wheel_speed,rear_right_wheel_speed]
+        #u = [delta,d,front_left_brake,front_right_brake,rear_left_brake,rear_right_brake]
+        px = x[0]
+        py = x[1]
+        phi = x[2]
+        vx = x[3]
+        vy = x[4]
+        omega = x[5]
+        steer = x[6]
+        #d = x[7]
+        
+        #wheel_omega = casadi.veccat(x[8]+x[9]/2,x[8]-x[9]/2,x[8]+x[10]/2,x[8]-x[10]/2)
+        front_wheel_omega = x[7]
+        rear_wheel_omega = x[8]
+        
+        steer_dot = u[0]
+        #d_dot = u[1]
+        d = u[1]
+        front_wheel_brake = u[2]
+        rear_wheel_brake = u[3]        
+
                 
+        #speed_at_wheel = casadi.veccat(casadi.sqrt((vy+omega*self.lf)**2 + vx**2),                                       
+        #                               casadi.sqrt((vy-omega*self.lr)**2 + vx**2))
+        
+        #slipping ratio & angle
+        #need work
+        alpha = casadi.veccat(-casadi.atan2(omega*self.lf + vy, vx+0.01) + steer,
+                              casadi.atan2(omega*self.lr - vy,vx+0.01))        
+        
+        lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/(casadi.fmax((vy+omega*self.lf)**2 + vx**2,0.001))**0.5,
+                             -1+ self.wheel_radius*rear_wheel_omega/(casadi.fmax((vy-omega*self.lr)**2 + vx**2,0.001))**0.5)
+        
+        #lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/((vy+omega*self.lf)**2 + vx**2)**0.5,
+        #                     -1+ self.wheel_radius*rear_wheel_omega/((vy-omega*self.lr)**2 + vx**2)**0.5)
+        
+        #Fz need work
+        #Fz = casadi.veccat(0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81)
+        Fz = casadi.DM.ones(2)*4*self.mass*9.81
+        
+        #Ff = self.front_tire_model.getForce(alpha[0],vx,d)
+        #Fr = self.rear_tire_model.getForce(alpha[1],vx,d)
+        Ff = self.front_tire_model.getForce(lamb[0],alpha[0],Fz[0])
+        #Ff[0] = (self.Cm1-self.Cm2*vx) * d - self.Croll -self.Cd*vx*vx  
+        Fr = self.rear_tire_model.getForce(lamb[1],alpha[1],Fz[1])        
+        #Fr[0] = 0
+        
+        px_dot = vx*casadi.cos(phi)-vy*casadi.sin(phi)
+        py_dot = vx*casadi.sin(phi)+vy*casadi.cos(phi)      
+        phi_dot = omega
+        
+        #vx_dot = 1/self.mass * (0 + K*casadi.cos(steer) - Ff[1]*casadi.sin(steer) + self.mass*vy*omega)   #vxdot
+        #vy_dot = 1/self.mass * (Fr[1] + K*casadi.sin(steer) + Ff[1]*casadi.cos(steer) - self.mass*vx*omega)  #vydot        
+        #omega_dot = 1/self.Iz * (Ff[1]*self.lf*casadi.cos(steer) + K*self.lf*casadi.sin(steer) - Fr[1]*self.lr)  #omegadot
+        
+        
+        vx_dot = 1/self.mass * (Fr[0] + Ff[0]*casadi.cos(steer) - Ff[1]*casadi.sin(steer) + self.mass*vy*omega)  #vxdot
+        vy_dot = 1/self.mass * (Fr[1] + Ff[0]*casadi.sin(steer) + Ff[1]*casadi.cos(steer) - self.mass*vx*omega)  #vydot        
+        omega_dot = 1/self.Iz * (Ff[1]*self.lf*casadi.cos(steer) + Ff[0]*self.lf*casadi.sin(steer) - Fr[1]*self.lr) #omegadot
+     
+        #K = 0.25*self.kc*d/(self.a+self.b*wheel_omega)
+        v_wheel = (front_wheel_omega+rear_wheel_omega)/2*self.wheel_radius
+        K = (self.Cm1-self.Cm2*v_wheel) * d - self.Croll -self.Cd*v_wheel*v_wheel 
+        
+        front_wheel_omega_dot = (K - Ff[0]-front_wheel_brake)*self.wheel_radius/self.wheel_inertia
+        rear_wheel_omega_dot = (K - Fr[0]-rear_wheel_brake)*self.wheel_radius/self.wheel_inertia
+        
+        dot_x = casadi.veccat(
+            px_dot,
+            py_dot,
+            phi_dot,
+            vx_dot,
+            vy_dot,
+            omega_dot,
+            steer_dot,
+            #d_dot,
+            front_wheel_omega_dot,
+            rear_wheel_omega_dot
+        )
+        return dot_x                
         
 class BicycleDynamicsModelTwoWheelDriveXY(DynamicsModel):
     def __init__(self, params,front_tire_model,rear_tire_model) -> None:        
@@ -749,7 +869,12 @@ class BicycleDynamicsModelTwoWheelDriveXY(DynamicsModel):
         self.lf = params['lf']
         self.lr = params['lr']
         self.wheel_radius = params['wheel_radius']
-        self.wheel_inertia = params['wheel_inertia']
+        key='wheel_radius'
+        if key in params:
+            self.wheel_inertia = params['wheel_inertia']
+        else:
+            self.wheel_inertia = params['wheel_mass']*self.wheel_radius*self.wheel_radius
+        #self.wheel_inertia = params['wheel_inertia']
         self.mass = params['m']
         self.Iz = params['Iz']
         self.a = 1

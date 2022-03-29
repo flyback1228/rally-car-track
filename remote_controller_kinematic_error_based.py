@@ -11,7 +11,7 @@ import numpy as np
 import sqlite3
 from datetime import datetime
 
-track_width = 6.0
+track_width = 3.0
 track = SymbolicTrack('tracks/temp.csv',track_width)
 with open('params/racecar.yaml') as file:
     params = yaml.load(file)
@@ -32,11 +32,13 @@ estimated_states=[]
 steering = 0
 throttle = 0
 
-N = 12
-dt = 0.06
+N = 10
+dt = 0.2
 nx = model.nx
 nu = model.nu
 
+coeff = casadi.DM(np.logspace(0.1,0.8,N+1)).T
+print(coeff)
 first_it = True
 
 
@@ -53,22 +55,21 @@ def getRef(x0):
         vt = min(v_max,v0 + 5.9*d_max*dt)
         st = (s0 + (v0+vt)*dt/2)%track.max_s
         tau_t = track.getTFromS(st)
-        while(tau_t<tau0):
-            tau_t = tau_t+ track.max_t
         phi_t = track.getPhiFromT(tau_t)
+        while(tau_t<tau0):
+            tau_t = tau_t+ track.max_t        
         nt = n0-(i+1)*n0/N
-
-        X_ref[:,i+1] = casadi.DM([tau0,nt,phi_t,vt])
+        X_ref[:,i+1] = casadi.DM([tau0,0,phi_t,vt])
         v0 = vt
         s0=st
         tau0 = tau_t
     return X_ref
 
 
-estimate_dt = dt+0.02
+estimate_dt = dt/2+0.016
 dae_x = casadi.MX.sym('dae_x',model.nx)
 dae_u = casadi.MX.sym('dae_u',model.nu)
-dae_ode = model.update(dae_x,dae_u);
+dae_ode = model.update(dae_x,dae_u)
 dae = {'x':dae_x, 'p':dae_u, 'ode':dae_ode}
 integrator = casadi.integrator('F','cvodes',dae,{'tf':dt})
 estimate_integrator = casadi.integrator('F','cvodes',dae,{'tf':estimate_dt})
@@ -87,7 +88,7 @@ option = {}
 option['print_level']=0
 casadi_option = {} 
 #casadi_option['print_time']=False
-option['max_cpu_time']=dt
+option['max_cpu_time']=dt/2
 
 con = sqlite3.connect('output/sql_data.db')
 cur = con.cursor()
@@ -95,6 +96,9 @@ now = datetime.now()
 table_name = now.strftime("_%m_%d_%Y_%H_%M_%S")
 
 cur.execute("CREATE TABLE {} (unity_sent_time real, python_receved_time real, python_sent_time real, unity_received_type real,real_x real,real_y real,real_psi real,real_v real,received_steer real, received_throttle real, sent_steer real, sent_throttle real)".format(table_name))
+
+print('min steering: {}'.format(delta_min))
+print('max steering: {}'.format(delta_max))
 
 def _check_mode(msg):
     return  "Auto" if msg and msg[:2] == '42' else "Manual"
@@ -145,8 +149,8 @@ async def control_loop(ws):
                 #ptsx = telemetry['ptsx']
                 #ptsy = telemetry['ptsy']
                 v0 = float(telemetry['speed'])
-                steering = float(telemetry['steering_angle'])
-                throttle = float(telemetry['throttle'])
+                received_steering = float(telemetry['steering_angle'])
+                received_throttle = float(telemetry['throttle'])
                 x = float(telemetry['x'])
                 y = float(telemetry['y'])
 
@@ -193,12 +197,10 @@ async def control_loop(ws):
                 #    X_ref = getRef(x0_guess)
                 #    first_it = False
                 #else:
-                #    X_ref = x0_guess
+                #    X_ref = x_guess
 
                 
 
-                opti.set_initial(X,x_guess)
-                opti.set_initial(U,u_guess)
 
                 
 
@@ -213,21 +215,16 @@ async def control_loop(ws):
                 d = U[1,:]
 
 
-                ds = N*dt*v_max    
+                ds = N*dt*v_max
                 tau0 = float(estimate_state[0])
-                #target boundary    
-                s0 = track.getSFromT(tau0%track.max_t)
-                st = (s0 + ds)%track.max_s        
-                tau_t = float(track.getTFromS(st))
-                while tau_t<tau0:
-                    tau_t = tau_t + track.max_t                 
+                #target boundary    delta_min
 
                 tau_error = tau - X_ref[0,:]
                 n_error=n-X_ref[1,:]
                 phi_error = casadi.cos(phi)*casadi.cos(X_ref[2,:]) + casadi.sin(phi)*casadi.sin(X_ref[2,:])
                 #opti.minimize(0.1*casadi.dot(tau_error,tau_error) +10*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
-                opti.minimize(0.4*casadi.dot(tau[-1]-tau_t,tau[-1]-tau_t) + 0.01*casadi.dot(tau_error,tau_error) + 0.0001*casadi.dot(n_error,n_error) - 0.1*casadi.dot(phi_error,phi_error)+100*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
-                #opti.minimize(0.01*casadi.dot(tau_error,tau_error) + 0.001*casadi.dot(n_error,n_error) +50*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+                #opti.minimize(0.1*casadi.dot(tau[-1]-tau_t,tau[-1]-tau_t) + 0.4*casadi.dot(tau_error,tau_error) + 0.0001*casadi.dot(n_error,n_error) - 40.0*casadi.dot(phi_error,phi_error)+10*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+                opti.minimize(0.0001*casadi.dot(tau_error,tau_error) + 0.0000001*casadi.sum2(n_error*n_error*coeff) +5.0*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
 
 
                 for k in range(N):
@@ -257,7 +254,7 @@ async def control_loop(ws):
 
                 opti.subject_to(opti.bounded(-track_width/2,n[-1],track_width/2))
                 opti.subject_to(opti.bounded(-n_c-0.1,n[0:-1],n_c+0.1))
-
+                #opti.subject_to(v[1:]*delta*delta<=0.1)
 
                 #print('nc='+str(n_c))
                 
@@ -271,17 +268,21 @@ async def control_loop(ws):
                 mpc_points_x = []
                 mpc_points_y = []
                 try:      
+
+                    opti.set_initial(X,x_guess)
+                    opti.set_initial(U,u_guess)
                     sol = opti.solve()   # actual solve
                     #predicated_states.append(np.array(sol.value(X)[:,1]))
                     tau_sol = sol.value(tau)
                     n_sol = sol.value(n)
                     pts = track.convertParameterToPos(tau_sol,n_sol)
-                    steering = float(sol.value(delta)[0])
+                    #steering = float((sol.value(delta)[0] +sol.value(delta)[1])/2)
+                    steering = float(sol.value(delta)[1])
                     throttle = (sol.value(d)[0])
                     last_mpc_u = sol.value(U)
-                                    
-                    data['steering_angle']="{:0.4f}".format(float(sol.value(delta)[0]))
-                    data['throttle']="{:0.2f}".format(float(sol.value(d)[0]))
+                    print(steering)
+                    data['steering_angle']="{:0.4f}".format(steering)
+                    data['throttle']="{:0.2f}".format(throttle)
                     mpc_points_x.append(pts[i,0] for i in range(len(pts)))
                     mpc_points_y.append(pts[i,1] for i in range(len(pts)))
                     data['mpc_x'] = ','.join("{:0.4f}".format(pts[i,0]) for i in range(int(len(pts))))
@@ -298,7 +299,8 @@ async def control_loop(ws):
                     #steering = float(opti.debug.value(delta)[0])
                     #throttle = (opti.debug.value(d)[0])
                     last_mpc_u = u_guess
-                                    
+                    steering=float((u_guess[0,0]+u_guess[0,1])/2)       
+                    throttle = float(u_guess[1,0])         
                     data['steering_angle']="{:0.4f}".format(float(u_guess[0,0]))
                     data['throttle']="{:0.2f}".format(float(u_guess[1,0]))
                     #temp_t=np.array(N)
@@ -323,13 +325,13 @@ async def control_loop(ws):
                 applying_time = float(telemetry['applying_time'])
                 #print(time.tim)
                 #print(applying_time)
-                while ((time.time())*1000-applying_time)<dt*1000:
+                while ((time.time())*1000-applying_time)<dt*1000/2:
                     continue
 
                 send_time = int(1000*time.time())-start_time
                 sql_query = "insert into {} values (?,?,?,?,?,?,?,?,?,?,?,?)".format(table_name)
                 cur.execute(sql_query,
-                    (float(telemetry['sending_time'])-start_time,receive_time,send_time,float(telemetry['applying_time'])-start_time,x,y,phi0,v0,steering,throttle,steering,throttle))
+                    (float(telemetry['sending_time'])-start_time,receive_time,send_time,applying_time-start_time,x,y,phi0,v0,received_steering,received_throttle,steering,throttle))
                 con.commit()
                 await ws.send(msg)            
 

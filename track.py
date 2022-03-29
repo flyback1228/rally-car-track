@@ -319,6 +319,7 @@ if __name__ == '__main__':
     #kappa = np.reshape(kappa,len(ts))
     fig2 = plt.figure()
     plt.plot(ts,kappa)
+    plt.title('curvature')
     plt.grid()
     
     phi = np.array([my_track.getPhiFromT(t) for t in ts]).reshape(len(ts))

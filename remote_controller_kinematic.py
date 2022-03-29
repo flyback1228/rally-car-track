@@ -13,7 +13,7 @@ import numpy as np
 import sqlite3
 from datetime import datetime
 
-track_width = 6.0
+track_width = 5.0
 track = SymbolicTrack('tracks/temp.csv',track_width)
 with open('params/racecar.yaml') as file:
         params = yaml.load(file)
@@ -34,20 +34,20 @@ estimated_states=[]
 steering = 0
 throttle = 0
 
-N = 20
-T = 0.7
+N = 15
+T = 1.6
 dt = T/N
 nx = model.nx
 nu = model.nu
 
 
-estimate_dt = dt+0.02
+#estimate_dt = dt
 dae_x = casadi.MX.sym('dae_x',model.nx)
 dae_u = casadi.MX.sym('dae_u',model.nu)
-dae_ode = model.update(dae_x,dae_u);
+dae_ode = model.update(dae_x,dae_u)
 dae = {'x':dae_x, 'p':dae_u, 'ode':dae_ode}
 integrator = casadi.integrator('F','cvodes',dae,{'tf':dt})
-estimate_integrator = casadi.integrator('F','cvodes',dae,{'tf':estimate_dt})
+estimate_integrator = casadi.integrator('F','cvodes',dae,{'tf':dt})
 
 start_time = int(1000*time.time())
  
@@ -63,7 +63,7 @@ last_mpc_u = casadi.DM.zeros(nu,N)
 option = {} 
 option['print_level']=0
 casadi_option = {} 
-#casadi_option['print_time']=False
+casadi_option['print_time']=False
 option['max_cpu_time']=dt
 
 con = sqlite3.connect('output/sql_data.db')
@@ -154,7 +154,7 @@ async def control_loop(ws):
                 #tangent_vec = track.getTangentVec(tau0)
 
                 
-                estimate_state = real_state + model.update(real_state,real_u)*estimate_dt
+                estimate_state = real_state + model.update(real_state,real_u)*dt
                 #Fk = estimate_integrator(x0=real_state, p=real_u)
                 #estimate_state = Fk['xf']
                 
@@ -193,13 +193,13 @@ async def control_loop(ws):
                 for k in range(N-1):
                     #Fk = estimate_integrator(x0=x0_guess, p=last_mpc_u[:,k+1])
                     #xt_guess = Fk['xf']
-                    xt_guess = x0_guess + model.update(x0_guess,last_mpc_u[:,k+1])*estimate_dt
+                    xt_guess = x0_guess + model.update(x0_guess,last_mpc_u[:,k+1])*dt
                     x_guess[:,k+1] = xt_guess
                     x0_guess = xt_guess
                 #print(x_guess)
                 #Fk = estimate_integrator(x0=x_guess[:,-2], p=last_mpc_u[:,-1])
                 #x_guess[:,-1] = Fk['xf']
-                x_guess[:,-1] = x_guess[:,-2] + model.update(x_guess[:,-2],last_mpc_u[:,-1])*estimate_dt
+                x_guess[:,-1] = x_guess[:,-2] + model.update(x_guess[:,-2],last_mpc_u[:,-1])*dt
                 u_guess[:,0:-1] = last_mpc_u[:,1:]
                 u_guess[:,-1]=u_guess[:,-2]
 
@@ -236,7 +236,7 @@ async def control_loop(ws):
 
                 #objective
                 #opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.000001*casadi.dot(n[-1],n[-1]) + 0.001*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
-                opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.000001*casadi.dot(n,n)+ 0.01*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+                opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.0000002*casadi.dot(n,n)+ 10.0*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
                 #opti.minimize(-0.04*(tau[-1]-ref_tau[-1]))
 
                 for k in range(N):
@@ -245,7 +245,7 @@ async def control_loop(ws):
                     #k3 = model.update(X[:,k]+estimate_dt/2*k2,U[:,k])
                     #k4 = model.update(X[:,k]+estimate_dt*k3,U[:,k])
                     #x_next = X[:,k]+estimate_dt/6*(k1 +2*k2 +2*k3 +k4)
-                    x_next = X[:,k] + estimate_dt*model.update(X[:,k],U[:,k])
+                    x_next = X[:,k] + dt*model.update(X[:,k],U[:,k])
                     #Fk = estimate_integrator(x0=X[:,k], p=U[:,k])
                     #x_next = Fk['xf']
                     opti.subject_to(X[:,k+1]==x_next)  
@@ -318,12 +318,8 @@ async def control_loop(ws):
                     mpc_points_y.append(pts[i,1] for i in range(len(pts)))
 
                     data['mpc_x'] = ','.join("{:0.4f}".format(pts[i,0]) for i in range(int(len(pts))))
-                    data['mpc_y'] = ','.join("{:0.4f}".format(pts[i,1]) for i in range(int(len(pts))))    
+                    data['mpc_y'] = ','.join("{:0.4f}".format(pts[i,1]) for i in range(int(len(pts))))
                     
-
-                #float(sol.value(delta)[1])
-                
-                
                 json_str = json.dumps(data)
                 msg = "42[\"steer\"," + json_str + "]"
 
