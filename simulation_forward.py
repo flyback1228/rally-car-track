@@ -36,14 +36,14 @@ def testBicycleTwoWheelDriveXYForward():
     delta_dot_min = params['delta_dot_min']  # minimum steering angle [rad]
     delta_dot_max = params['delta_dot_max']
 
-    v0 = 0.5
+    v0 = 1
     X0 = casadi.DM([0,0,0,v0,0,0,0.0,v0/params['wheel_radius'],v0/params['wheel_radius']])
     u = [0.0,0.5,0,0]
     
     
     
     #ocp params
-    T = 200
+    T = 50
     N = 20*T
     nx = model.nx
     nu = model.nu

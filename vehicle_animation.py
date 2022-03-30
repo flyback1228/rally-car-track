@@ -26,33 +26,32 @@ def plotVehicle(position,theta,vehicle_length,vehicle_width,ax):
     ax.plot([right_light_start[0],right_light_end[0]], [right_light_start[1],right_light_end[1]], lw=4,solid_capstyle="butt", zorder=1, color='m' )
     
    
-def animate(x_ax,data,vehicle_length,vehicle_width,lines,i):
+def animate(x_ax,data,ptxs,ptys,vehicle_length,vehicle_width,lines,i):
     #sql_phi,sql_vx,sql_vy,sql_steer,sql_d,sql_omega,sql_front_wheel_omega,sql_rear_wheel_omega,sql_front_wheel_alpha,sql_rear_wheel_alpha,sql_front_wheel_lamb,sql_rear_wheel_lamb,sql_front_brake,sql_rear_brake,sql_ptx,sql_pty
-    theta = data[i][1]
-    ptx_str = data[i][15]
-    pty_str = data[i][16]
-    ptx = np.fromstring(ptx_str, dtype=float, sep=',')
-    pty = np.fromstring(pty_str, dtype=float, sep=',')
+    theta = data[0:i+1,1]
+
+    ptx = np.fromstring(ptxs[i], dtype=float, sep=',')
+    pty = np.fromstring(ptys[i], dtype=float, sep=',')
     
-    vx = data[i][2]
-    vy = data[i][3]
-    steer = data[i][4]
-    d = data[i][5]
+    vx = data[0:i+1,2]
+    vy = data[0:i+1,3]
+    steer = data[0:i+1,4]
+    d = data[0:i+1,5]
     
-    omega = data[i][6]
+    omega = data[0:i+1,6]
     
-    front_wheel_omega = data[i][7]
-    rear_wheel_omega = data[i][8]
-    front_wheel_alpha = data[i][9]
-    rear_wheel_alpha = data[i][10]
-    front_wheel_lambda = data[i][11]
-    rear_wheel_lambda = data[i][12]
-    front_wheel_brake = data[i][13]
-    rear_wheel_brake = data[i][14]
+    front_wheel_omega = data[0:i+1,7]
+    rear_wheel_omega = data[0:i+1,8]
+    front_wheel_alpha = data[0:i+1,9]
+    rear_wheel_alpha = data[0:i+1,10]
+    front_wheel_lambda = data[0:i+1,11]
+    rear_wheel_lambda = data[0:i+1,12]
+    front_wheel_brake = data[0:i+1,13]
+    rear_wheel_brake = data[0:i+1,14]
     
     position = np.array([ptx[0],pty[0]])
             
-    rot_mat = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]]).reshape(2,2)
+    rot_mat = np.array([[np.cos(theta[-1]),-np.sin(theta[-1])],[np.sin(theta[-1]),np.cos(theta[-1])]]).reshape(2,2)
     #print(rot_mat)
     #print(np.array([[-vehicle_length/2],[0]]))
     
@@ -69,24 +68,24 @@ def animate(x_ax,data,vehicle_length,vehicle_width,lines,i):
     lines[2].set_data([right_light_start[0],right_light_end[0]],[right_light_start[1],right_light_end[1]])
     lines[3].set_data(ptx,pty)
     
-    lines[4].set_data(x_ax[0:i],vx)
-    lines[5].set_data(x_ax[0:i],vy)
-    lines[6].set_data(x_ax[0:i],front_wheel_omega)
-    lines[7].set_data(x_ax[0:i],rear_wheel_omega)
+    lines[4].set_data(x_ax[0:i+1],vx)
+    lines[5].set_data(x_ax[0:i+1],vy)
+    lines[6].set_data(x_ax[0:i+1],front_wheel_omega)
+    lines[7].set_data(x_ax[0:i+1],rear_wheel_omega)
     
-    lines[8].set_data(x_ax[0:i],front_wheel_brake)
-    lines[9].set_data(x_ax[0:i],rear_wheel_brake)
+    lines[8].set_data(x_ax[0:i+1],front_wheel_brake)
+    lines[9].set_data(x_ax[0:i+1],rear_wheel_brake)
     
-    lines[10].set_data(x_ax[0:i],front_wheel_alpha)
-    lines[11].set_data(x_ax[0:i],rear_wheel_alpha)
-    lines[12].set_data(x_ax[0:i],front_wheel_lambda)
-    lines[13].set_data(x_ax[0:i],rear_wheel_lambda)
+    lines[10].set_data(x_ax[0:i+1],front_wheel_alpha)
+    lines[11].set_data(x_ax[0:i+1],rear_wheel_alpha)
+    lines[12].set_data(x_ax[0:i+1],front_wheel_lambda)
+    lines[13].set_data(x_ax[0:i+1],rear_wheel_lambda)
     
-    lines[14].set_data(x_ax[0:i],steer)
-    lines[15].set_data(x_ax[0:i],d)
+    lines[14].set_data(x_ax[0:i+1],steer)
+    lines[15].set_data(x_ax[0:i+1],d)
     
-    lines[16].set_data(x_ax[0:i],omega)
-    lines[17].set_data(x_ax[0:i],theta)
+    lines[16].set_data(x_ax[0:i+1],omega)
+    lines[17].set_data(x_ax[0:i+1],theta)
     
     return lines
 
@@ -95,11 +94,21 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
     num_rows = len(data)
     total_time = num_rows*dt;
 
-    v_max = 0
-    computation_time = []
-    for i in range(num_rows):
-        v_max = max(v_max,data[i][2])
-        computation_time.append(data[i][0])
+    np_data = np.array(data)
+    mpc_data = (np_data[:,:-2]).astype(float)
+    ptxs = np_data[:,-2]
+    ptys = np_data[:,-1]
+    
+    v_max = np.amax(mpc_data[:,2])
+    
+    front_wheel_alpha = mpc_data[:,9]
+    rear_wheel_alpha = mpc_data[:,10]
+    front_wheel_lambda = mpc_data[:,11]
+    rear_wheel_lambda = mpc_data[:,12]
+    d = mpc_data[:,5]
+    steer = mpc_data[:,4]
+    phi = mpc_data[:,1]
+    omega = mpc_data[:,6]
 
     
     ax1 = plt.subplot(1,2,1)
@@ -113,6 +122,8 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
     ax3.get_xaxis().set_ticks([])
     ax4.get_xaxis().set_ticks([])
     ax5.get_xaxis().set_ticks([])
+    
+
 
     lines = []
     lines.append(ax1.plot([], [], lw=8,solid_capstyle="butt", zorder=1, color='c' )[0])
@@ -139,26 +150,47 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
     lines.append(ax6.plot([], [],solid_capstyle="butt", zorder=1 ,label='omega' )[0])
     lines.append(ax6.plot([], [],solid_capstyle="butt", zorder=1 ,label='phi' )[0])
     
+    ax4_max = max([max(front_wheel_alpha),max(rear_wheel_alpha),max(front_wheel_lambda),max(rear_wheel_lambda)])
+    ax4_min = min([min(front_wheel_alpha),min(rear_wheel_alpha),min(front_wheel_lambda),min(rear_wheel_lambda)])
+    ax4.set_ylim(ax4_min-abs(ax4_min/10),ax4_max+abs(ax4_max)/10)
+    
+    ax5_max = max([max(d),max(steer)])
+    ax5_min = min([min(steer),min(d)])
+    ax5.set_ylim(ax5_min-abs(ax5_min/10),ax5_max+abs(ax5_max)/10)
+    
+    ax6_max = max(max(omega),max(phi))
+    ax6_min = min(min(omega),min(phi))
+    ax6.set_ylim(ax6_min-abs(ax6_min/10),ax6_max+abs(ax6_max)/10)
+    
+    ax2.legend()
+    ax3.legend()
+    ax4.legend()
+    ax5.legend()
+    ax6.legend()
+    
     fig.set_size_inches(21, 10.5)
     track.plot(ax1)
     x_ax = np.linspace(0,total_time,num_rows+1)
     
-    anim = animation.FuncAnimation(fig, functools.partial(animate,x_ax,data,vehicle_length,vehicle_width,lines),interval=dt,frames=num_rows,repeat=True, blit=True)
+    anim = animation.FuncAnimation(fig, functools.partial(animate,x_ax,mpc_data,ptxs,ptys,vehicle_length,vehicle_width,lines),interval=dt,frames=num_rows,repeat=True, blit=True)
     #anim.save('image/twowheelwithbrake_sim.gif', writer=animation.PillowWriter(fps=10),dpi=100)
     
     
     
     fig2 = plt.figure()
-    plt.scatter(range(num_rows),computation_time)
+    plt.scatter(range(num_rows),mpc_data[:,0])
+    plt.title("computational time")
     plt.show()
 
 
 if __name__=='__main__':
-    table_name = 'global_03_29_2022_11_31_31'
+    table_name = 'global_03_29_2022_17_44_17'
     con = sqlite3.connect('output/sql_data.db')
     cur = con.cursor()
     cur.execute("SELECT * FROM {}".format(table_name))
-    data = cur.fetchall()    
+    data = cur.fetchall() 
+    
+       
     dt =0.1
     track_width = 4   
     track = SymbolicTrack('tracks/temp.csv',track_width)
