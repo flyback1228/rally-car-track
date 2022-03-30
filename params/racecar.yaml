@@ -9,21 +9,23 @@ width: 1.5
 
 wheel_radius: 0.335
 wheel_mass: 100
-wheel_inertia: 500
+wheel_inertia: 100
 #wheel_inertia: 0.000004
 
-Cm1: 200
+brake_torque: 400
+
+Cm1: 400
 #Cm1: 0.487
-Cm2: 20
-Croll: 15
+Cm2: 10
+Croll: 5
 Cd: 1
 
 d_max: 1.0
-d_min: -1.0
+d_min: 0.0
 v_max: 35.6
 v_min: 0.00
-delta_min: -0.697  # minimum steering angle [rad]
-delta_max: 0.697
+delta_min: -0.526  # minimum steering angle [rad]
+delta_max: 0.526
 delta_dot_min: -6.28
 delta_dot_max: 6.28
 

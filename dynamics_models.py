@@ -633,6 +633,8 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         self.Croll = params['Croll']
         self.Cd = params['Cd']
         
+        self.brake_torque = params['brake_torque']
+        
         self.lf = params['lf']
         self.lr = params['lr']
         self.wheel_radius = params['wheel_radius']
@@ -718,11 +720,11 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
      
         #K = 0.25*self.kc*d/(self.a+self.b*wheel_omega)
         v_wheel = (front_wheel_omega+rear_wheel_omega)/2*self.wheel_radius
-        K = (self.Cm1-self.Cm2*v_wheel) * d - self.Croll -self.Cd*v_wheel*v_wheel 
-        #K= self.Cm1*d-self.Croll
+        #K = (self.Cm1-self.Cm2*v_wheel) * d - self.Croll -self.Cd*v_wheel*v_wheel 
+        K= self.Cm1*d-self.Croll
         
-        front_wheel_omega_dot = (K - Ff[0]-front_wheel_brake)*self.wheel_radius/self.wheel_inertia
-        rear_wheel_omega_dot = (K - Fr[0]-rear_wheel_brake)*self.wheel_radius/self.wheel_inertia
+        front_wheel_omega_dot = (K - Ff[0]*self.wheel_radius-self.brake_torque*front_wheel_brake)/self.wheel_inertia
+        rear_wheel_omega_dot = (K - Fr[0]*self.wheel_radius-self.brake_torque*rear_wheel_brake)/self.wheel_inertia
         
         dot_x = casadi.veccat(
             t_dot,

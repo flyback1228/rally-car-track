@@ -276,11 +276,11 @@ class SymbolicTrack:
         hes = casadi.jacobian(jac,t)
         return (jac[0]*hes[1]-jac[1]*hes[0])/casadi.power(casadi.norm_2(jac),3)
 
-    def convertParameterToPos(self,t,n):
+    def convertParameterToPos(self,t,n,size):
         #center = self.pt_t(t)        
         theta = np.deg2rad(90)
         rot_mat = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
-        pt = np.zeros((len(t),2))
+        pt = np.zeros((size,2))
         for i in range(len(t)):
             vec = self.dsdt(t[i],0.0)
             vec = vec/np.linalg.norm(vec)

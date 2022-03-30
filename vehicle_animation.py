@@ -96,8 +96,8 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
 
     np_data = np.array(data)
     mpc_data = (np_data[:,:-2]).astype(float)
-    ptxs = np_data[:,-2]
-    ptys = np_data[:,-1]
+    ptxs = np_data[:,-3]
+    ptys = np_data[:,-2]
     
     v_max = np.amax(mpc_data[:,2])
     
@@ -128,8 +128,8 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
     lines = []
     lines.append(ax1.plot([], [], lw=8,solid_capstyle="butt", zorder=1, color='c' )[0])
     lines.append(ax1.plot([], [], lw=4,solid_capstyle="butt", zorder=1, color='m' )[0])
-    lines.append(ax1.plot([], [], lw=4,solid_capstyle="butt", zorder=1, color='b' )[0])
-    lines.append(ax1.plot([],[])[0])
+    lines.append(ax1.plot([], [], lw=4,solid_capstyle="butt", zorder=1, color='r' )[0])
+    lines.append(ax1.plot([],[], lw=2,solid_capstyle="butt", zorder=1, color='r')[0])
 
     lines.append(ax2.plot([], [],solid_capstyle="butt", zorder=1,label='vx')[0])
     lines.append(ax2.plot([], [],solid_capstyle="butt", zorder=1,label='vy' )[0])
@@ -184,7 +184,7 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
 
 
 if __name__=='__main__':
-    table_name = 'global_03_29_2022_17_44_17'
+    table_name = 'global_03_30_2022_16_46_50'
     con = sqlite3.connect('output/sql_data.db')
     cur = con.cursor()
     cur.execute("SELECT * FROM {}".format(table_name))
@@ -192,7 +192,7 @@ if __name__=='__main__':
     
        
     dt =0.1
-    track_width = 4   
+    track_width = 6   
     track = SymbolicTrack('tracks/temp.csv',track_width)
     
     with open('params/racecar.yaml') as file:
