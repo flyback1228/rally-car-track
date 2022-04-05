@@ -4,15 +4,17 @@ from numpy.core.fromnumeric import repeat, trace
 from track import *
 from dynamics_models import *
 from tire_model import SimplePacTireMode
+from tire_model import SimpleTire
 from matplotlib import animation
 import sqlite3
 from datetime import datetime
 import vehicle_animation
 
-track_width = 5 
+track_width = 6 
 track = SymbolicTrack('tracks/temp.csv',track_width)
 
 #define tire mode
+
 with open('params/racecar_simple_tire_front.yaml') as file:
     front_tire_params = yaml.load(file)
 front_tire_model = SimplePacTireMode(front_tire_params)
@@ -20,6 +22,16 @@ front_tire_model = SimplePacTireMode(front_tire_params)
 with open('params/racecar_simple_tire_rear.yaml') as file:
     rear_tire_params = yaml.load(file)
 rear_tire_model = SimplePacTireMode(rear_tire_params)
+
+"""
+with open('params/simple_tire.yaml') as file:
+    front_tire_params = yaml.load(file)
+front_tire_model = SimpleTire(front_tire_params)
+
+with open('params/simple_tire.yaml') as file:
+    rear_tire_params = yaml.load(file)
+rear_tire_model = SimpleTire(rear_tire_params)
+"""
 
 #define model
 with open('params/racecar.yaml') as file:
@@ -47,8 +59,8 @@ vehicle_width = params['width']
 #track_length_tau = track.max_t
 
 #initial boundary
-tau0 = 8
-v0 = 5
+tau0 = 4
+v0 = 10
 phi0 =track.getPhiFromT(tau0)
 #x = [t,n,phi,vx,vy,omega,steer,front_wheel_speed,rear_wheel_speed]
 X0 = casadi.DM([tau0,0,phi0,v0,0,0,0,v0/params['wheel_radius'],v0/params['wheel_radius']])
@@ -59,7 +71,7 @@ cur = con.cursor()
 now = datetime.now()
 table_name = 'global'+now.strftime("_%m_%d_%Y_%H_%M_%S")
 cur.execute("CREATE TABLE {} (computation_time real,phi real, vx real, vy real, steer real,d real,omega real,front_wheel_omega real,rear_wheel_omega real,front_wheel_alpha real,rear_wheel_alpha real,front_wheel_lambda real,rear_wheel_lambda real,front_brake real, rear_brake real,ptx text,pty text,error text)".format(table_name))
-#ocp params
+#ocp params0.01
 N = 20
 nx = model.nx
 nu = model.nu
@@ -70,7 +82,7 @@ t = np.linspace(0,1,N+1)
 #casadi options
 option = {}
 option['max_iter']=30000
-option['tol'] = 1e-6
+option['tol'] = 1e-3
 #option['print_level']=0
 
 one_step_option = {}
@@ -95,10 +107,10 @@ omega_history=[]
 first_run = True
 
 guess_X = casadi.DM.zeros(nx,N+1)
-guess_X[:,0]=X0
+#guess_X[:,0]=X0
+for i in range(N):
+    guess_X[:,i]=X0
 guess_U = casadi.DM.zeros(nu,N)
-
-
 
 
 
@@ -145,8 +157,8 @@ def oneStep(X0):
 
 def optimize(X0,forward_N):  
     #define ocp 
-    global first_run
-    error = 'success'
+    global first_run,guess_X,guess_U
+    error = ''
     opti = casadi.Opti()
     X = opti.variable(nx,N+1)
     U = opti.variable(nu,N)
@@ -183,11 +195,11 @@ def optimize(X0,forward_N):
     #objective
     #opti.minimize(-10*tau[-1])
     #opti.minimize(casadi.dot(delta_dot,delta_dot)*0.01 + casadi.dot(n,n)*0.01-10*tau[-1])
-    opti.minimize(casadi.dot(n[-1],n[-1])*0.1 + casadi.dot(delta_dot,delta_dot)*0.0001 -10*(tau[-1]-ref_tau[-1]) + casadi.dot(front_brake,front_brake)*0.1 +casadi.dot(rear_brake,rear_brake)*0.1 )
+    opti.minimize(-0.1*(tau[-1]-ref_tau[-1]) + casadi.dot(front_brake,front_brake)*0.001 +casadi.dot(rear_brake,rear_brake)*0.001 +casadi.dot(d,d)*0.0001 )
     
     for k in range(N):
         #x_next = X[:,k] + dt*model.update(X[:,k],U[:,k])
-        #X_dot[:,k] = model.update(X[:,k],U[:,k])              
+        #X_dot[:,k] = model.update(X[:,k],U[:,k])               
         #x_next = X[:,k] + dt*X_dot[:,k]          
         k1 = model.update(X[:,k],U[:,k])
         k2 = model.update(X[:,k]+dt/2*k1,U[:,k])
@@ -201,8 +213,9 @@ def optimize(X0,forward_N):
     opti.subject_to(X[:,0] == X0)
 
     #state bound
-    opti.subject_to(opti.bounded(v_min,vx,v_max*1.1))
+    opti.subject_to(opti.bounded(0,vx,v_max*1.1))
     opti.subject_to(opti.bounded(-track_width/2,n,track_width/2))
+    #opti.subject_to(opti.bounded(-track_width/3,n[-1],track_width/3))
     opti.subject_to(opti.bounded(delta_min,delta,delta_max))
     opti.subject_to(opti.bounded(0,front_wheel_omega,v_max/params['wheel_radius']))
     opti.subject_to(opti.bounded(0,rear_wheel_omega,v_max/params['wheel_radius']))
@@ -219,6 +232,7 @@ def optimize(X0,forward_N):
     opti.subject_to(opti.bounded(0,rear_brake,1))
     
     
+    #if not first_run:
     #if not first_run:
     opti.set_initial(X,guess_X)
     opti.set_initial(U,guess_U)
@@ -316,18 +330,27 @@ def optimize(X0,forward_N):
             sol_vx = guess_X[3,:]
             sol_vy = guess_X[4,:]
             sol_omega = guess_X[5,:]
-            
+            sol_steer = guess_X[6,:]
             sol_front_wheel_omega = guess_X[7,:]
             sol_rear_wheel_omega = guess_X[8,:]
 
             
             sol_d = guess_U[1,:]
-            sol_steer = guess_U[0,:]
+            
             sol_front_brake = guess_U[2,:]
             sol_rear_brake = guess_U[3,:]
             
             sol_x = guess_X
             sol_u = guess_U
+            
+            #xguess,uguess = oneStep(sol_x[:,-1])    
+            
+            guess_X = casadi.DM.ones(nx,N+1)
+            guess_U = casadi.DM.zeros(nu,N)  
+            guess_X[:,0] = sol_x[:,1]   
+            for i in range(N):
+                guess_X[:,i] = sol_x[:,1]   
+            first_run = True
         
         else:
             #post processor
@@ -341,20 +364,20 @@ def optimize(X0,forward_N):
             sol_rear_wheel_omega = opti.debug.value(rear_wheel_omega)
             sol_front_brake = opti.debug.value(front_brake)
             sol_rear_brake = opti.debug.value(rear_brake)
-            
-            sol_d = opti.debug.value(d)
             sol_steer = opti.debug.value(delta)
             
+            sol_d = opti.debug.value(d)
             sol_x = opti.debug.value(X)
             sol_u = opti.debug.value(U)
-        
+            
+            xguess,uguess = oneStep(sol_x[:,-1])    
+            guess_X[:,0:-1] = sol_x[:,1:]
+            guess_X[:,-1] = xguess 
+            guess_U[:,0:-1]=sol_u[:,1:]
+            guess_U[:,-1]=uguess
        
         
-        xguess,uguess = oneStep(sol_x[:,-1])    
-        guess_X[:,0:-1] = sol_x[:,1:]
-        guess_X[:,-1] = xguess 
-        guess_U[:,0:-1]=sol_u[:,1:]
-        guess_U[:,-1]=uguess        
+          
         """
         guess_U[:,0:-1]=sol_u[:,1:]
         guess_U[:,-1]=sol_u[:,-1]
@@ -401,11 +424,11 @@ def optimize(X0,forward_N):
 
     
 if __name__=='__main__':
-    total_time = 25
+    total_time = 60
     total_frame = int(total_time*N/T)
     for i in range(total_frame):
         X0 =optimize(X0,1)
     
     cur.execute("SELECT * FROM {}".format(table_name))
     data = cur.fetchall()    
-    vehicle_animation.plot(track,data,vehicle_length,vehicle_width,T/N)
+    vehicle_animation.plot(track,data,params,T/N)

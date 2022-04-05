@@ -89,22 +89,34 @@ def animate(x_ax,data,ptxs,ptys,vehicle_length,vehicle_width,lines,i):
     
     return lines
 
-def plot(track,data,vehicle_length,vehicle_width,dt):
+def plot(track,data,params,dt):
     fig,ax = plt.subplots()
     num_rows = len(data)
     total_time = num_rows*dt;
 
     np_data = np.array(data)
-    mpc_data = (np_data[:,:-2]).astype(float)
+    mpc_data = (np_data[:,:-3]).astype(float)
     ptxs = np_data[:,-3]
     ptys = np_data[:,-2]
+
+    #with open('params/racecar.yaml') as file:
+    #    params = yaml.load(file)
+    vehicle_length = (params['lf']+params['lr'])*1.2
+    vehicle_width = params['width']
     
-    v_max = np.amax(mpc_data[:,2])
+    v_max1 = np.amax(mpc_data[:,2])
+    v_max2 = np.amax(mpc_data[:,7])
+    v_max3 = np.amax(mpc_data[:,8])
+    v_max = np.amax([v_max1,v_max2,v_max3])
+
+    v_min = np.amin([np.amin(mpc_data[:,3]),np.amin(mpc_data[:,2])])
     
     front_wheel_alpha = mpc_data[:,9]
     rear_wheel_alpha = mpc_data[:,10]
     front_wheel_lambda = mpc_data[:,11]
     rear_wheel_lambda = mpc_data[:,12]
+
+
     d = mpc_data[:,5]
     steer = mpc_data[:,4]
     phi = mpc_data[:,1]
@@ -112,7 +124,7 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
 
     
     ax1 = plt.subplot(1,2,1)
-    ax2 = plt.subplot(5,2,2,xlim=(-total_time/10,total_time*1.1),ylim=(-1-v_max*0.1,v_max*1.1))
+    ax2 = plt.subplot(5,2,2,xlim=(-total_time/10,total_time*1.1),ylim=(v_min-np.abs(v_min)*0.1,v_max*1.2))
     ax3 = plt.subplot(5,2,4,xlim=(-total_time/10,total_time*1.1),ylim=(-0.1,0.6))
     ax4 = plt.subplot(5,2,6,xlim=(-total_time/10,total_time*1.1))
     ax5 = plt.subplot(5,2,8,xlim=(-total_time/10,total_time*1.1))
@@ -184,7 +196,7 @@ def plot(track,data,vehicle_length,vehicle_width,dt):
 
 
 if __name__=='__main__':
-    table_name = 'global_03_30_2022_16_46_50'
+    table_name = 'global_04_05_2022_17_43_11'
     con = sqlite3.connect('output/sql_data.db')
     cur = con.cursor()
     cur.execute("SELECT * FROM {}".format(table_name))
@@ -192,11 +204,9 @@ if __name__=='__main__':
     
        
     dt =0.1
-    track_width = 6   
+    track_width = 6  
     track = SymbolicTrack('tracks/temp.csv',track_width)
     
     with open('params/racecar.yaml') as file:
         params = yaml.load(file)
-    vehicle_length = (params['lf']+params['lr'])*1.2
-    vehicle_width = params['width']
-    plot(track,data,vehicle_length,vehicle_width,0.1)
+    plot(track,data,params,0.1)

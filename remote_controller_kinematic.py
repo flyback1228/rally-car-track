@@ -30,7 +30,7 @@ real_states=[]
 real_inputs=[]
 estimated_states=[]
 #predicated_states=[]
-
+0.01
 steering = 0
 throttle = 0
 
@@ -236,7 +236,7 @@ async def control_loop(ws):
 
                 #objective
                 #opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.000001*casadi.dot(n[-1],n[-1]) + 0.001*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
-                opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.0000002*casadi.dot(n,n)+ 10.0*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
+                opti.minimize(-0.04*(tau[-1]-ref_tau[-1]) + 0.00002*casadi.dot(n,n)+ 10.0*casadi.dot(delta[1:]-delta[0:-1],delta[1:]-delta[0:-1] ))
                 #opti.minimize(-0.04*(tau[-1]-ref_tau[-1]))
 
                 for k in range(N):

@@ -647,9 +647,9 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
             self.wheel_inertia = params['wheel_mass']*self.wheel_radius*self.wheel_radius
         self.mass = params['m']
         self.Iz = params['Iz']
-        self.a = 1
-        self.b = 0.1
-        self.kc = 0.2
+        #self.a = 1
+        #self.b = 0.1
+        #self.kc = 0.2
         
         
         
@@ -685,14 +685,26 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         
         #slipping ratio & angle
         #need work
-        alpha = casadi.veccat(-casadi.atan2(omega*self.lf + vy, vx+0.01) + steer,
-                              casadi.atan2(omega*self.lr - vy,vx+0.01))        
+        #alpha = casadi.veccat(-casadi.atan2(omega*self.lf + vy, vx+0.01) + steer,
+        #                      casadi.atan2(omega*self.lr - vy,vx+0.01))  
         
-        lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/(casadi.fmax((vy+omega*self.lf)**2 + vx**2,0.001))**0.5,
-                             -1+ self.wheel_radius*rear_wheel_omega/(casadi.fmax((vy-omega*self.lr)**2 + vx**2,0.001))**0.5)
+        alpha = casadi.veccat(-casadi.atan2(omega*self.lf+vy, vx) + steer,
+                              casadi.atan2(omega*self.lr-vy,vx)) 
+        #alpha = casadi.veccat(-(omega*self.lf+vy)/(casadi.fmax(vx,0.1)) + steer,
+        #                      (omega*self.lr-vy)/(casadi.fmax(vx,0.1)))             
         
-        #lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/((vy+omega*self.lf)**2 + vx**2)**0.5,
-        #                     -1+ self.wheel_radius*rear_wheel_omega/((vy-omega*self.lr)**2 + vx**2)**0.5)
+        #lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/(casadi.fmax((vy+omega*self.lf)**2 + vx**2,0.001))**0.5,
+        #                     -1+ self.wheel_radius*rear_wheel_omega/(casadi.fmax((vy-omega*self.lr)**2 + vx**2,0.001))**0.5)
+        
+        #lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/((vy+omega*self.lf)**2 + vx**2+0.00001)**0.5,
+        #                     -1+ self.wheel_radius*rear_wheel_omega/((vy-omega*self.lr)**2 + vx**2+0.00001)**0.5)
+
+        #lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/(casadi.fmax(vx,0.1)),
+        #                    -1+ self.wheel_radius*rear_wheel_omega/(casadi.fmax(vx,0.1)))
+        #lamb = casadi.veccat(-1+ casadi.rdivide(self.wheel_radius*front_wheel_omega,vx),
+        #                     -1+ casadi.rdivide(self.wheel_radius*rear_wheel_omega,vx))
+        lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/vx,
+                             -1+ self.wheel_radius*rear_wheel_omega/vx)
         
         #Fz need work
         #Fz = casadi.veccat(0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81,0.25*self.mass*9.81)
@@ -719,10 +731,12 @@ class BicycleDynamicsModelTwoWheelDriveWithBrake(DynamicsModel):
         omega_dot = 1/self.Iz * (Ff[1]*self.lf*casadi.cos(steer) + Ff[0]*self.lf*casadi.sin(steer) - Fr[1]*self.lr) #omegadot
      
         #K = 0.25*self.kc*d/(self.a+self.b*wheel_omega)
-        v_wheel = (front_wheel_omega+rear_wheel_omega)/2*self.wheel_radius
+        #v_wheel = (front_wheel_omega+rear_wheel_omega)/2*self.wheel_radius
         #K = (self.Cm1-self.Cm2*v_wheel) * d - self.Croll -self.Cd*v_wheel*v_wheel 
-        K= self.Cm1*d-self.Croll
+        K= self.Cm1*d
         
+        #front_wheel_omega_dot = (K -casadi.fabs(Ff[1])*self.wheel_radius*0.2 - Ff[0]*self.wheel_radius-self.brake_torque*front_wheel_brake)/self.wheel_inertia
+        #rear_wheel_omega_dot = (K -casadi.fabs(Fr[1])*self.wheel_radius*0.2- Fr[0]*self.wheel_radius-self.brake_torque*rear_wheel_brake)/self.wheel_inertia
         front_wheel_omega_dot = (K - Ff[0]*self.wheel_radius-self.brake_torque*front_wheel_brake)/self.wheel_inertia
         rear_wheel_omega_dot = (K - Fr[0]*self.wheel_radius-self.brake_torque*rear_wheel_brake)/self.wheel_inertia
         
@@ -802,11 +816,11 @@ class BicycleDynamicsModelTwoWheelDriveWithBrakeXY(DynamicsModel):
         
         #slipping ratio & angle
         #need work
-        alpha = casadi.veccat(-casadi.atan2(omega*self.lf + vy, vx+0.01) + steer,
-                              casadi.atan2(omega*self.lr - vy,vx+0.01))        
+        alpha = casadi.veccat(-casadi.atan2(omega*self.lf + vy, vx+1e-9) + steer,
+                              casadi.atan2(omega*self.lr - vy,vx+1e-9))        
         
-        lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/(casadi.fmax((vy+omega*self.lf)**2 + vx**2,0.001))**0.5,
-                             -1+ self.wheel_radius*rear_wheel_omega/(casadi.fmax((vy-omega*self.lr)**2 + vx**2,0.001))**0.5)
+        lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/(casadi.fmax((vy+omega*self.lf)**2 + vx**2,1e-9))**0.5,
+                             -1+ self.wheel_radius*rear_wheel_omega/(casadi.fmax((vy-omega*self.lr)**2 + vx**2,1e-9))**0.5)
         
         #lamb = casadi.veccat(-1+ self.wheel_radius*front_wheel_omega/((vy+omega*self.lf)**2 + vx**2)**0.5,
         #                     -1+ self.wheel_radius*rear_wheel_omega/((vy-omega*self.lr)**2 + vx**2)**0.5)
@@ -880,9 +894,9 @@ class BicycleDynamicsModelTwoWheelDriveXY(DynamicsModel):
         #self.wheel_inertia = params['wheel_inertia']
         self.mass = params['m']
         self.Iz = params['Iz']
-        self.a = 1
-        self.b = 0.1
-        self.kc = 0.2
+        #self.a = 1
+        #self.b = 0.1
+        #self.kc = 0.2
         
         
         

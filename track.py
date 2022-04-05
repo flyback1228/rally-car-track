@@ -281,7 +281,7 @@ class SymbolicTrack:
         theta = np.deg2rad(90)
         rot_mat = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
         pt = np.zeros((size,2))
-        for i in range(len(t)):
+        for i in range(size):
             vec = self.dsdt(t[i],0.0)
             vec = vec/np.linalg.norm(vec)
             vec = np.dot(rot_mat,vec)

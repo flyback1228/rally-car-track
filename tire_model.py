@@ -1,5 +1,13 @@
 import casadi
 
+class SimpleTire:
+    def __init__(self,params) -> None:
+        #pajecka and motor coefficients
+        self.k_long = params['k_long']
+        self.k_lat = params['k_lat']       
+
+    def getForce(self,lamb,alpha,Fz):
+        return casadi.veccat(0.5*Fz*self.k_long*lamb,0.5*Fz*self.k_lat*alpha)
 
 class SimpleElectricalDrivenTire:
     def __init__(self,params,drive_wheel) -> None:
