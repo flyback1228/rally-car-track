@@ -72,18 +72,18 @@ now = datetime.now()
 table_name = 'global'+now.strftime("_%m_%d_%Y_%H_%M_%S")
 cur.execute("CREATE TABLE {} (computation_time real,phi real, vx real, vy real, steer real,d real,omega real,front_wheel_omega real,rear_wheel_omega real,front_wheel_alpha real,rear_wheel_alpha real,front_wheel_lambda real,rear_wheel_lambda real,front_brake real, rear_brake real,ptx text,pty text,error text)".format(table_name))
 #ocp params0.01
-N = 20
+N = 30
 nx = model.nx
 nu = model.nu
-T = 2.0
+T = 3.0
 dt = T/N
 ds = T*v_max
 t = np.linspace(0,1,N+1)
 #casadi options
 option = {}
-option['max_iter']=30000
-option['tol'] = 1e-3
-#option['print_level']=0
+option['max_iter']=2000
+option['tol'] = 1e-4
+option['print_level']=0
 
 one_step_option = {}
 one_step_option['max_iter']=1000
@@ -195,7 +195,7 @@ def optimize(X0,forward_N):
     #objective
     #opti.minimize(-10*tau[-1])
     #opti.minimize(casadi.dot(delta_dot,delta_dot)*0.01 + casadi.dot(n,n)*0.01-10*tau[-1])
-    opti.minimize(-0.1*(tau[-1]-ref_tau[-1]) + casadi.dot(front_brake,front_brake)*0.001 +casadi.dot(rear_brake,rear_brake)*0.001 +casadi.dot(d,d)*0.0001 )
+    opti.minimize(-0.1*(tau[-1]-ref_tau[-1]) + casadi.dot(delta_dot,delta_dot)*0.001 + casadi.dot(front_brake,front_brake)*0.0001 +casadi.dot(rear_brake,rear_brake)*0.0001 +casadi.dot(d,d)*0.0001 )
     
     for k in range(N):
         #x_next = X[:,k] + dt*model.update(X[:,k],U[:,k])
@@ -262,12 +262,15 @@ def optimize(X0,forward_N):
         
         #tau_history.append(float(sol_tau[0]))
         #n_history.append(float(sol_n[0]))
-        
+        for i in range(N):
+            guess_X[:,i] = sol_x[:,1]   
+        """
         xguess,uguess = oneStep(sol_x[:,-1])        
         guess_X[:,0:-1] = sol_x[:,1:]
         guess_X[:,-1] = xguess  
         guess_U[:,0:-1]=sol_u[:,1:]
         guess_U[:,-1]=uguess
+        """
         """
         x_last,u_last = oneStep(sol_x[:,-1])
         guess_U[:,0:-1]=sol_u[:,1:]
@@ -294,15 +297,17 @@ def optimize(X0,forward_N):
         
         sql_front_wheel_omega=float(sol_front_wheel_omega[0])*params['wheel_radius']
         sql_rear_wheel_omega=float(sol_rear_wheel_omega[0])*params['wheel_radius']
-        
+
+                
         sql_front_brake=float(sol_front_brake[0])
         sql_rear_brake=float(sol_rear_brake[0])
         
-        sql_front_wheel_lamb = float((-1+ params['wheel_radius']*sol_front_wheel_omega/casadi.sqrt(casadi.fmax((sol_vy+sol_omega*params['lf'])**2 + sol_vx**2,0.001)))[0])
-        sql_rear_wheel_lamb = float((-1+ params['wheel_radius']*sol_rear_wheel_omega/casadi.sqrt(casadi.fmax((sol_vy-sol_omega*params['lr'])**2 + sol_vx**2,0.001)))[0])
+        sql_front_wheel_lamb = float((-1+ params['wheel_radius']*sol_front_wheel_omega/sol_vx)[0])
+        sql_rear_wheel_lamb = float((-1+ params['wheel_radius']*sol_rear_wheel_omega/sol_vx)[0])
         
-        sql_front_wheel_alpha = float((-casadi.atan2(sol_omega*params['lf'] + sol_vy, sol_vx+0.01) + sol_steer)[0])
-        sql_rear_wheel_alpha = float((casadi.atan2(sol_omega*params['lr'] - sol_vy,sol_vx+0.01))[0])
+        sql_front_wheel_alpha = float((-casadi.atan2(sol_omega*params['lf'] + sol_vy, sol_vx) + sol_steer)[0])
+        sql_rear_wheel_alpha = float((casadi.atan2(sol_omega*params['lr'] - sol_vy,sol_vx))[0])
+  
                
         sql_steer=float(sol_steer[0])
         sql_d=float(sol_d[0])        
@@ -341,7 +346,7 @@ def optimize(X0,forward_N):
             sol_rear_brake = guess_U[3,:]
             
             sol_x = guess_X
-            sol_u = guess_U
+            #sol_u = guess_U
             
             #xguess,uguess = oneStep(sol_x[:,-1])    
             
@@ -368,14 +373,17 @@ def optimize(X0,forward_N):
             
             sol_d = opti.debug.value(d)
             sol_x = opti.debug.value(X)
-            sol_u = opti.debug.value(U)
+            #sol_u = opti.debug.value(U)
             
+            for i in range(N):
+                guess_X[:,i] = sol_x[:,1]   
+            """
             xguess,uguess = oneStep(sol_x[:,-1])    
             guess_X[:,0:-1] = sol_x[:,1:]
             guess_X[:,-1] = xguess 
             guess_U[:,0:-1]=sol_u[:,1:]
             guess_U[:,-1]=uguess
-       
+            """
         
           
         """
@@ -402,11 +410,11 @@ def optimize(X0,forward_N):
         sql_front_brake=float(sol_front_brake[0])
         sql_rear_brake=float(sol_rear_brake[0])
         
-        sql_front_wheel_lamb = float((-1+ params['wheel_radius']*sol_front_wheel_omega/casadi.sqrt(casadi.fmax((sol_vy+sol_omega*params['lf'])**2 + sol_vx**2,0.001)))[0])
-        sql_rear_wheel_lamb = float((-1+ params['wheel_radius']*sol_rear_wheel_omega/casadi.sqrt(casadi.fmax((sol_vy-sol_omega*params['lr'])**2 + sol_vx**2,0.001)))[0])
+        sql_front_wheel_lamb = float((-1+ params['wheel_radius']*sol_front_wheel_omega/sol_vx)[0])
+        sql_rear_wheel_lamb = float((-1+ params['wheel_radius']*sol_rear_wheel_omega/sol_vx)[0])
         
-        sql_front_wheel_alpha = float((-casadi.atan2(sol_omega*params['lf'] + sol_vy, sol_vx+0.01) + sol_steer)[0])
-        sql_rear_wheel_alpha = float((casadi.atan2(sol_omega*params['lr'] - sol_vy,sol_vx+0.01))[0])   
+        sql_front_wheel_alpha = float((-casadi.atan2(sol_omega*params['lf'] + sol_vy, sol_vx) + sol_steer)[0])
+        sql_rear_wheel_alpha = float((casadi.atan2(sol_omega*params['lr'] - sol_vy,sol_vx))[0])   
                
         sql_steer=float(sol_steer[0])
         sql_d=float(sol_d[0])        
@@ -428,6 +436,7 @@ if __name__=='__main__':
     total_frame = int(total_time*N/T)
     for i in range(total_frame):
         X0 =optimize(X0,1)
+        print(f"finished: {i+1} of {total_frame}")
     
     cur.execute("SELECT * FROM {}".format(table_name))
     data = cur.fetchall()    

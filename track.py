@@ -106,7 +106,7 @@ def parametricS(f,n):
     return integ   
 
 class SymbolicTrack:
-    def __init__(self,filename,width):
+    def __init__(self,filename,width,forward_length_for_avg_kappa=40):
         resolution = 100
         #decimal = int(np.log10(resolution))
 
@@ -120,6 +120,7 @@ class SymbolicTrack:
         self.center_line = np.array([self.pt_t(t)[0,:] for t in self.ts])
         self.center_line = np.reshape(self.center_line,(len(self.center_line),2))
         self.dsdt = self.pt_t.jacobian() 
+        
         t = casadi.MX.sym('t')
         s = casadi.MX.sym('s')
         dae={'x':s, 't':t, 'ode':casadi.norm_2(self.dsdt(t,0))}
@@ -129,30 +130,48 @@ class SymbolicTrack:
         self.s_value = np.reshape(self.s_value,len(self.s_value))
         #print(self.s_value.shape)
 
+        
+
         theta = np.deg2rad(90)
         rot_mat = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
         self.inner_line = np.zeros_like(self.center_line)
         self.outer_line = np.zeros_like(self.center_line)
-
+        
+        pt_t_mx = self.pt_t(t)
+        jac = casadi.jacobian(pt_t_mx,t)
+        hes = casadi.jacobian(jac,t)
+        kappa = (jac[0]*hes[1]-jac[1]*hes[0])/casadi.power(casadi.norm_2(jac),3)
+        
+        self.jac = casadi.Function('track_jac',[t],[casadi.jacobian(pt_t_mx,t)])
+        
+        self.hes = casadi.Function('track_hes',[t],[casadi.jacobian(jac,t)])
+        self.f_kappa = casadi.Function('kappa',[t],[kappa])
+        self.s_to_t_lookup = casadi.interpolant("s_to_t","linear",[self.s_value.tolist()],self.ts.tolist())
+        self.t_to_s_lookup = casadi.interpolant("t_to_s","linear",[self.ts.tolist()],self.s_value.tolist())
+        self.max_s = self.s_value[-1]
+        
+        avg_kappa =np.zeros(len(self.ts),)
         for i in range(len(self.ts)):
             vec = self.dsdt(self.ts[i],0.0)
             vec = vec/np.linalg.norm(vec)
             vec = np.dot(rot_mat,vec)
             self.inner_line[i,:] = self.center_line[i,:]+width/2*vec.T
-            self.outer_line[i,:] = self.center_line[i,:]-width/2*vec.T 
+            self.outer_line[i,:] = self.center_line[i,:]-width/2*vec.T
+            
 
-        self.s_to_t_lookup = casadi.interpolant("s_to_t","linear",[self.s_value.tolist()],self.ts.tolist())
-        self.t_to_s_lookup = casadi.interpolant("t_to_s","linear",[self.ts.tolist()],self.s_value.tolist())
-
-        self.max_s = self.s_value[-1]
-
-        pt_t_mx = self.pt_t(t)
-        jac = casadi.jacobian(pt_t_mx,t)
-        hes = casadi.jacobian(jac,t)
-        kappa = (jac[0]*hes[1]-jac[1]*hes[0])/casadi.power(casadi.norm_2(jac),3)
-        self.f_kappa = casadi.Function('kappa',[t],[kappa])
+            s_end = self.s_value[i] + forward_length_for_avg_kappa;
+            t_end = self.s_to_t_lookup(s_end%self.max_s)
+            if s_end>self.max_s:
+                t_end=t_end+self.max_t
+            
+            temp_t = casadi.mod(casadi.linspace(self.ts[i],t_end,100),self.max_t)
+            
+            avg_kappa[i] = np.amax(casadi.fabs(self.f_kappa(temp_t)))
+            
+        self.s_to_avg_kappa_lookup = casadi.interpolant("s_to_avg_kappa_lookup","linear",[self.s_value.tolist()],avg_kappa.tolist())
+        self.t_to_avg_kappa_lookup = casadi.interpolant("t_to_avg_kappa_lookup","linear",[self.ts.tolist()],avg_kappa.tolist())
         
-        
+        print(np.min(avg_kappa))
         
         self.T = KDTree(self.center_line) 
         """
@@ -257,6 +276,9 @@ class SymbolicTrack:
         vec = self.dsdt(t,0.0)
         return np.arctan2(vec[1],vec[0])
     
+    def getJac(self):
+        return self.jac
+
     def getPhiSym(self,t):
         vec = self.dsdt(t,0.0)
         return casadi.arctan2(vec[1],vec[0])
@@ -269,6 +291,12 @@ class SymbolicTrack:
     
     def getSFromT(self,t):
         return self.t_to_s_lookup(t)
+    
+    def getAvgKappaFromT(self,t):
+        return self.t_to_avg_kappa_lookup(t)
+    
+    def getAvgKappaFromS(self,s):
+        return self.s_to_avg_kappa_lookup(s)
     
     def getCurvatureSym(self,t):        
         fun = self.pt_t(t)
@@ -305,7 +333,7 @@ class SymbolicTrack:
 
 
 if __name__ == '__main__':
-    my_track = SymbolicTrack('tracks/temp.csv',8)
+    my_track = SymbolicTrack('tracks/temp_nwh.csv',7,20)
     fig = plt.subplot()
     my_track.plot(fig)
     
@@ -315,34 +343,44 @@ if __name__ == '__main__':
     n = 28
     resolution = 100
     ts = np.linspace(0, n, n*resolution,endpoint=False)
-    kappa = np.array([f(x) for x in ts]).reshape(len(ts))
+    kappa_value = np.array([f(x) for x in ts]).reshape(len(ts))
     #kappa = np.reshape(kappa,len(ts))
     fig2 = plt.figure()
-    plt.plot(ts,kappa)
+    plt.plot(ts,kappa_value)
     plt.title('curvature')
     plt.grid()
     
-    phi = np.array([my_track.getPhiFromT(t) for t in ts]).reshape(len(ts))
+    phi_value = np.array([my_track.getPhiFromT(t) for t in ts]).reshape(len(ts))
     fig3 = plt.figure()
-    plt.plot(ts,phi)
-    
+    plt.plot(ts,phi_value)    
     v = np.array([np.linalg.norm(my_track.getTangentVec(t)) for t in ts]).reshape(len(ts))
-    
-    #plt.plot(ts,v)
+        #plt.plot(ts,v)
     #angle = np.linspace(-4*np.pi,4*np.pi,100)
     #at = np.(angle, 1)
     #fig4 = plt.figure()
     #plt.plot(angle,at)
-    print(my_track.convertXYtoTN([44,154]))
-    print(my_track.convertXYtoTN([18,139]))
-    data = np.array([[44,154],[18,139]])
+    #print(my_track.convertXYtoTN([44,154]))
+    #print(my_track.convertXYtoTN([18,139]))
+    #data = np.array([[44,154],[18,139]])
+    
+    avg_kappa_t = my_track.t_to_avg_kappa_lookup(ts)
+    fig4 = plt.figure()
+    plt.plot(ts,avg_kappa_t)
+    plt.title('t-kappa')
+    
+    s = np.linspace(0, my_track.max_s, n*resolution,endpoint=False)
+    avg_kappa_s = my_track.s_to_avg_kappa_lookup(s)
+    fig5 = plt.figure()
+    plt.plot(s,avg_kappa_t)
+    plt.title('s-kappa')
+    
 
-    fig.plot(data[:,0],data[:,1],'*g')
+    #fig.plot(data[:,0],data[:,1],'*g')
 
     #print(my_track.f_kappa(ts))
 
-    fig4 = plt.figure()
-    plt.plot(ts,my_track.f_kappa(ts))
+    #fig4 = plt.figure()
+    #plt.plot(ts,my_track.f_kappa(ts))
     
     plt.show()
     

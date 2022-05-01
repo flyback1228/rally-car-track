@@ -1,0 +1,31 @@
+m: 1485 #[kg]
+#lf: 1.26 #[m]
+#lr: 1.41 #[m]
+lf: 1.156 #[m]
+lr: 1.507 #[m]
+
+Iz:  2161 #[kg*m^3]
+width: 1
+
+wheel_radius: 0.335
+wheel_mass: 100
+wheel_inertia: 20
+#wheel_inertia: 0.000004
+
+brake_torque: 40000
+
+Cm1: 1760
+#Cm1: 0.487
+Cm2: 10
+Croll: 20
+Cd: 0.2
+
+d_max: 1.0
+d_min: -1.0
+v_max: 30
+v_min: 0.1
+delta_min: -0.436  # minimum steering angle [rad]
+delta_max: 0.436
+delta_dot_min: -3.14
+delta_dot_max: 3.14
+

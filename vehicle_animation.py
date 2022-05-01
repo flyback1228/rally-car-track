@@ -1,5 +1,3 @@
-import imp
-from turtle import position
 import numpy as np
 from track import SymbolicTrack
 import matplotlib.pyplot as plt
@@ -186,27 +184,30 @@ def plot(track,data,params,dt):
     
     anim = animation.FuncAnimation(fig, functools.partial(animate,x_ax,mpc_data,ptxs,ptys,vehicle_length,vehicle_width,lines),interval=dt,frames=num_rows,repeat=True, blit=True)
     #anim.save('image/twowheelwithbrake_sim.gif', writer=animation.PillowWriter(fps=10),dpi=100)
-    
-    
-    
-    fig2 = plt.figure()
-    plt.scatter(range(num_rows),mpc_data[:,0])
-    plt.title("computational time")
+        
+    #fig2 = plt.figure()
+    #plt.scatter(range(num_rows),mpc_data[:,0])
+    #plt.title("computational time")
     plt.show()
 
 
 if __name__=='__main__':
-    table_name = 'global_04_05_2022_17_43_11'
+    #table_name = 'global_04_06_2022_12_38_40'
+    #table_name = 'global_04_06_2022_16_20_42'
+    #table_name = 'global_04_07_2022_12_35_57'
+    #table_name = 'unity_04_07_2022_16_31_03'
+    table_name = 'unity_04_20_2022_12_52_01'
+    
     con = sqlite3.connect('output/sql_data.db')
     cur = con.cursor()
-    cur.execute("SELECT * FROM {}".format(table_name))
+    cur.execute(f"SELECT * FROM {table_name}")
     data = cur.fetchall() 
     
        
     dt =0.1
     track_width = 6  
-    track = SymbolicTrack('tracks/temp.csv',track_width)
+    track = SymbolicTrack('tracks/temp_nwh.csv',track_width)
     
-    with open('params/racecar.yaml') as file:
-        params = yaml.load(file)
+    with open('params/racecar_nwh.yaml') as file:
+        params = yaml.safe_load(file)
     plot(track,data,params,0.1)

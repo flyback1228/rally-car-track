@@ -1,0 +1,23 @@
+full_torque_over_all_wheels: 2000
+brake_torque: 20000
+m: 1000
+inertia: 1786
+lf: 1.43 #[m]
+lr: 1.44 #[m]
+width: 1.5
+
+front_wheel_radius: 0.335
+front_wheel_mass: 40
+rear_wheel_radius: 0.37
+rear_wheel_mass: 100
+
+d_max: 1.0
+d_min: 0.0
+v_max: 60
+v_min: 0.1
+delta_min: -0.436  # minimum steering angle [rad]
+delta_max: 0.436
+delta_dot_min: -3.14
+delta_dot_max: 3.14
+
+downward_force: 100
