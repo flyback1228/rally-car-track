@@ -120,7 +120,6 @@ class SymbolicTrack:
         self.center_line = np.array([self.pt_t(t)[0,:] for t in self.ts])
         self.center_line = np.reshape(self.center_line,(len(self.center_line),2))
         self.dsdt = self.pt_t.jacobian() 
-        
         t = casadi.MX.sym('t')
         s = casadi.MX.sym('s')
         dae={'x':s, 't':t, 'ode':casadi.norm_2(self.dsdt(t,0))}
@@ -141,10 +140,6 @@ class SymbolicTrack:
         jac = casadi.jacobian(pt_t_mx,t)
         hes = casadi.jacobian(jac,t)
         kappa = (jac[0]*hes[1]-jac[1]*hes[0])/casadi.power(casadi.norm_2(jac),3)
-        
-        self.jac = casadi.Function('track_jac',[t],[casadi.jacobian(pt_t_mx,t)])
-        
-        self.hes = casadi.Function('track_hes',[t],[casadi.jacobian(jac,t)])
         self.f_kappa = casadi.Function('kappa',[t],[kappa])
         self.s_to_t_lookup = casadi.interpolant("s_to_t","linear",[self.s_value.tolist()],self.ts.tolist())
         self.t_to_s_lookup = casadi.interpolant("t_to_s","linear",[self.ts.tolist()],self.s_value.tolist())
@@ -276,9 +271,6 @@ class SymbolicTrack:
         vec = self.dsdt(t,0.0)
         return np.arctan2(vec[1],vec[0])
     
-    def getJac(self):
-        return self.jac
-
     def getPhiSym(self,t):
         vec = self.dsdt(t,0.0)
         return casadi.arctan2(vec[1],vec[0])
@@ -343,25 +335,25 @@ if __name__ == '__main__':
     n = 28
     resolution = 100
     ts = np.linspace(0, n, n*resolution,endpoint=False)
-    kappa_value = np.array([f(x) for x in ts]).reshape(len(ts))
+    kappa = np.array([f(x) for x in ts]).reshape(len(ts))
     #kappa = np.reshape(kappa,len(ts))
     fig2 = plt.figure()
-    plt.plot(ts,kappa_value)
+    plt.plot(ts,kappa)
     plt.title('curvature')
     plt.grid()
     
-    phi_value = np.array([my_track.getPhiFromT(t) for t in ts]).reshape(len(ts))
+    phi = np.array([my_track.getPhiFromT(t) for t in ts]).reshape(len(ts))
     fig3 = plt.figure()
-    plt.plot(ts,phi_value)    
+    plt.plot(ts,phi)    
     v = np.array([np.linalg.norm(my_track.getTangentVec(t)) for t in ts]).reshape(len(ts))
         #plt.plot(ts,v)
     #angle = np.linspace(-4*np.pi,4*np.pi,100)
     #at = np.(angle, 1)
     #fig4 = plt.figure()
     #plt.plot(angle,at)
-    #print(my_track.convertXYtoTN([44,154]))
-    #print(my_track.convertXYtoTN([18,139]))
-    #data = np.array([[44,154],[18,139]])
+    print(my_track.convertXYtoTN([44,154]))
+    print(my_track.convertXYtoTN([18,139]))
+    data = np.array([[44,154],[18,139]])
     
     avg_kappa_t = my_track.t_to_avg_kappa_lookup(ts)
     fig4 = plt.figure()
@@ -375,7 +367,7 @@ if __name__ == '__main__':
     plt.title('s-kappa')
     
 
-    #fig.plot(data[:,0],data[:,1],'*g')
+    fig.plot(data[:,0],data[:,1],'*g')
 
     #print(my_track.f_kappa(ts))
 

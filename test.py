@@ -1,76 +1,37 @@
-# Car race along a track
-# ----------------------
-# An optimal control problem (OCP),
-# solved with direct multiple-shooting.
-#
-# For more information see: http://labs.casadi.org/OCP
-from casadi import *
+import casadi
+import numpy as np
+from track import SymbolicTrack
+from poly_track import PolynomialTrack
+import matplotlib.pyplot as plt
+from scipy import interpolate
 
-N = 100 # number of control intervals
+waypoints = np.genfromtxt('tracks/temp_nwh.csv', delimiter=',')
+n = len(waypoints)
 
-opti = Opti() # Optimization problem
+waypoints = np.vstack([waypoints,waypoints[0,:]])
 
-# ---- decision variables ---------
-X = opti.variable(2,N+1) # state trajectory
-pos   = X[0,:]
-speed = X[1,:]
-U = opti.variable(1,N)   # control trajectory (throttle)
-T = opti.variable()      # final time
+t = np.arange(0, n+1)
+resolution = 100
+print(t.shape)
+print(waypoints.shape)
+circle = interpolate.interp1d(t,waypoints,kind='cubic',axis=0,fill_value = 'extrapolate')
+ts = np.linspace(0, n+1, (n+1)*resolution,endpoint=False)
+print(ts)
+center_line = circle(ts)
+d = center_line[1:,:] - center_line[0:-1,:]
+ds = np.linalg.norm(d,ord=2,axis=1)        
+ds = np.insert(ds,0,0.0)
+s = np.cumsum(ds)
 
-# ---- objective          ---------
-opti.minimize(T) # race in minimal time
+my_track = SymbolicTrack('tracks/temp_nwh.csv',5)
 
-# ---- dynamic constraints --------
-f = lambda x,u: vertcat(x[1],u-x[1]) # dx/dt = f(x,u)
+t = np.linspace(2,6,500)
+pos = my_track.convertParameterToPos(t,np.zeros(500),500);
 
-dt = T/N # length of a control interval
-for k in range(N): # loop over control intervals
-   # Runge-Kutta 4 integration
-   k1 = f(X[:,k],         U[:,k])
-   k2 = f(X[:,k]+dt/2*k1, U[:,k])
-   k3 = f(X[:,k]+dt/2*k2, U[:,k])
-   k4 = f(X[:,k]+dt*k3,   U[:,k])
-   x_next = X[:,k] + dt/6*(k1+2*k2+2*k3+k4) 
-   opti.subject_to(X[:,k+1]==x_next) # close the gaps
+p = np.polyfit(t,pos,5)
+print(p)
 
-# ---- path constraints -----------
-limit = lambda pos: 1-sin(2*pi*pos)/2
-opti.subject_to(speed<=limit(pos))   # track speed limit
-opti.subject_to(opti.bounded(0,U,1)) # control is limited
-
-# ---- boundary conditions --------
-opti.subject_to(pos[0]==0)   # start at position 0 ...
-opti.subject_to(speed[0]==0) # ... from stand-still 
-opti.subject_to(pos[-1]==1)  # finish line at position 1
-
-# ---- misc. constraints  ----------
-opti.subject_to(T>=0) # Time must be positive
-
-# ---- initial values for solver ---
-opti.set_initial(speed, 1)
-opti.set_initial(T, 1)
-
-option = {}
-#option['max_iter']=3000
-#option['tol'] = 1e-5
-#option['print_level']=0
-option['linear_solver']='ma26'
-# ---- solve NLP              ------
-opti.solver("ipopt",{},option) # set numerical backend
-sol = opti.solve()   # actual solve
-
-# ---- post-processing        ------
-from pylab import plot, step, figure, legend, show, spy
-
-plot(sol.value(speed),label="speed")
-plot(sol.value(pos),label="pos")
-plot(limit(sol.value(pos)),'r--',label="speed limit")
-step(range(N),sol.value(U),'k',label="throttle")
-legend(loc="upper left")
-
-figure()
-spy(sol.value(jacobian(opti.g,opti.x)))
-figure()
-spy(sol.value(hessian(opti.f+dot(opti.lam_g,opti.g),opti.x)[0]))
-
-show()
+polytrack = PolynomialTrack('tracks/temp_nwh.csv',5)
+#plt.plot(my_track.center_line[:,0],my_track.center_line[:,1])
+plt.plot(polytrack.center_line[:,0],polytrack.center_line[:,1])
+plt.show()
