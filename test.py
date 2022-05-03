@@ -4,6 +4,7 @@ from track import SymbolicTrack
 from poly_track import PolynomialTrack
 import matplotlib.pyplot as plt
 from scipy import interpolate
+from poly_track import PolyPath
 
 waypoints = np.genfromtxt('tracks/temp_nwh.csv', delimiter=',')
 n = len(waypoints)
@@ -25,11 +26,21 @@ s = np.cumsum(ds)
 
 my_track = SymbolicTrack('tracks/temp_nwh.csv',5)
 
-t = np.linspace(2,6,500)
-pos = my_track.convertParameterToPos(t,np.zeros(500),500);
+t = np.linspace(2,6,100).reshape(1,100)
+#pos = my_track.convertParameterToPos(t,np.zeros(100),500);
+pos = my_track.pt_t(t)
+pos = np.array(pos).reshape(100,2)
+print(pos.shape)
 
-p = np.polyfit(t,pos,5)
+p = np.polyfit(t.reshape(100,),pos,5)
 print(p)
+
+
+
+polyval_x = np.polyval(p[:,0],t.reshape(100,))
+polyval_y = np.polyval(p[:,1],t.reshape(100,))
+
+plt.plot(polyval_x,polyval_y,'-*r')
 
 polytrack = PolynomialTrack('tracks/temp_nwh.csv',5)
 #plt.plot(my_track.center_line[:,0],my_track.center_line[:,1])
