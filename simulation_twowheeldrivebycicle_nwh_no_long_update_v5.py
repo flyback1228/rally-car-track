@@ -67,10 +67,10 @@ phi0 =track.getPhiFromT(tau0)
 #x = [t,n,phi,vx,vy,omega,steer]
 X0 = casadi.DM([s0,0,phi0,v0,0,0,0])
 
-N = 180
+N = 120
 nx = 7
 nu = 3
-T =6.0
+T =4.0
 dt = T/N
 #ds = T*v_max
 t = np.linspace(0,1,N+1)
@@ -81,7 +81,7 @@ con = sqlite3.connect('output/sql_data.db')
 cur = con.cursor()
 now = datetime.now()
 table_name = 'unity'+now.strftime("_%m_%d_%Y_%H_%M_%S")
-cur.execute("CREATE TABLE {} (computation_time real,phi real, vx real, vy real, steer real,omega real,front_wheel_alpha real,rear_wheel_alpha real,front_fx real, rear_fx real,front_fy real, rear_fy real,s real,ptx text,pty text,error text)".format(table_name))
+cur.execute("CREATE TABLE {} (computation_time real,phi real, vx real, vy real, steer real,omega real,front_wheel_alpha real,rear_wheel_alpha real,front_fx real, rear_fx real,front_fy real, rear_fy real,s real,ds real,poly_order real,ptx text,pty text,error text)".format(table_name))
 
 #casadi options
 option = {}
@@ -118,16 +118,21 @@ Fy_r_max = rear_tire_model.getMaxLateralForce(Fz[1])
 sol_x = None
 sol_u = None
 
-cd = 4000
-cm1 = 100
-cm0 = 100
+cd = 5000
+cm1 =100
+cm0 = 0
 
 def optimize(X0):  
     #define ocp 
     global first_run,guess_X,guess_U,s0,sol_x,sol_u
     error = ''
     s0 = float(X0[0])
-    ds = 120
+    ds = 200
+    
+    if sol_x is None:
+        ds = 100
+    else:
+        ds = float(sol_x[0,-1]) + cd / 50*dt
 
 
     s0_array = np.arange(s0,ds+s0,min(ds/100,0.2))    
@@ -136,14 +141,30 @@ def optimize(X0):
     pos = np.array(pos).reshape(len(s0_array),2)
     
     #polynomial fitting
-     
-    coeff = np.polyfit(x_axis,pos,order,w=weight)
+    
+    x_axis = s0_array - s0
+    sum_array =[]
+    for order in range(3,20):
+        coeff = np.polyfit(x_axis,pos,order)    
+        x_poly = np.polyval(coeff[:,0],x_axis)
+        y_poly = np.polyval(coeff[:,1],x_axis)
+        poly_val = np.vstack([x_poly,y_poly]).T
+        norm_array = np.linalg.norm(poly_val-pos,axis=-1)
+        sum_norm = np.sum(norm_array)
+        sum_array.append(sum_norm)
+        if sum_norm/N<0.5:
+            break
+        
+    best_order = np.argmin(sum_array)+3    
+    print(f"ds: {ds}, order: {best_order}, sum norm {sum_array[best_order-3]}")   
+    coeff = np.polyfit(x_axis,pos,best_order)  
+    #weight = np.linspace(2,0.5,len(x_axis))
     
     #construct the symbolic polynomial    
     s = casadi.MX.sym('s')
-    pos_mx = coeff[0,:]*casadi.power(s,order)
-    for i in range(1,order):
-        pos_mx += coeff[i,:] * casadi.power(s,order-i)
+    pos_mx = coeff[0,:]*casadi.power(s,best_order)
+    for i in range(1,best_order):
+        pos_mx += coeff[i,:] * casadi.power(s,best_order-i)
     pos_mx += coeff[-1,:]
     
     jac = casadi.jacobian(pos_mx,s)
@@ -193,8 +214,8 @@ def optimize(X0):
     fy_f_sym_array = front_tire_model.getLateralForce(alpha_f,Fz[0])
     fy_r_sym_array = rear_tire_model.getLateralForce(alpha_r,Fz[1])
     
-    #front_rate = casadi.fmax((fy_f_sym_array*fy_f_sym_array+fx_f_sym_array*fx_f_sym_array)/(Fy_f_max*Fy_f_max),1)
-    #rear_rate = casadi.fmax((fy_r_sym_array*fy_r_sym_array+fx_r_sym_array*fx_r_sym_array)/(Fy_r_max*Fy_r_max),1)
+    front_rate = casadi.fmax((fy_f_sym_array*fy_f_sym_array+fx_f_sym_array*fx_f_sym_array)/(Fy_f_max*Fy_f_max),1)
+    rear_rate = casadi.fmax((fy_r_sym_array*fy_r_sym_array+fx_r_sym_array*fx_r_sym_array)/(Fy_r_max*Fy_r_max),1)
 
     #fy_f_sym_array=fy_f_sym_array/(front_rate**0.5)
     #fy_r_sym_array=fy_r_sym_array/(rear_rate**0.5)
@@ -220,7 +241,7 @@ def optimize(X0):
         #+ casadi.dot(delta_dot_sym_array,delta_dot_sym_array)*0.00001/N 
         #+ n_sym_array[-1]*n_sym_array[-1]*0.00001/N)
     n_obj = (casadi.atan(5*(n_sym_array**2-(track_width/2)**2))+casadi.pi/2)*20
-    opti.minimize(-10*(s_sym_array[-1]) + casadi.dot(n_obj,n_obj))
+    opti.minimize(-100*(s_sym_array[-1]) + casadi.dot(n_obj,n_obj))
     
     #initial condition
     opti.subject_to(X[:,0] == casadi.DM([0,X0[1],X0[2],X0[3],X0[4],X0[5],X0[6]]))
@@ -232,13 +253,13 @@ def optimize(X0):
     #state bound
     #opti.subject_to(opti.bounded(0.0,vx_sym_array,v_max))
     #opti.subject_to(opti.bounded(-track_width/2,n_sym_array[0:-1],track_width/2))
-    opti.subject_to(opti.bounded(-track_width/4,n_sym_array[int(-N/2):],track_width/4))
+    #opti.subject_to(opti.bounded(-track_width/4,n_sym_array[int(-N/3):],track_width/4))
     opti.subject_to(opti.bounded(delta_min,delta_sym_array,delta_max))
      
     #input bound
     opti.subject_to(opti.bounded(delta_dot_min,delta_dot_sym_array,delta_dot_max))
-    opti.subject_to(opti.bounded(-10,front_throttle_array,1) ) 
-    opti.subject_to(opti.bounded(-10,rear_throttle_array,1) ) 
+    opti.subject_to(opti.bounded(-2,front_throttle_array,1) ) 
+    opti.subject_to(opti.bounded(-2,rear_throttle_array,1) ) 
 
     #opti.subject_to(fy_f_sym_array*fy_f_sym_array + fx_f_sym_array*fx_f_sym_array<Fy_f_max*Fy_f_max)  
     #opti.subject_to(fy_r_sym_array*fy_r_sym_array + fx_r_sym_array*fx_r_sym_array<Fy_r_max*Fy_r_max)
@@ -320,7 +341,7 @@ def optimize(X0):
             #+ casadi.dot(delta_dot_sym_array,delta_dot_sym_array)*0.00001/N 
             #+ n_sym_array[-1]*n_sym_array[-1]*0.00001/N)
         n_obj = (casadi.atan(5*(n_sym_array**2-(track_width/2)**2))+casadi.pi/2)*5
-        opti.minimize(-50*(s_sym_array[-1]) + casadi.dot(n_obj,n_obj))
+        opti.minimize(-1000*(s_sym_array[-1]) + casadi.dot(n_obj,n_obj))
         
         #initial condition
         opti.subject_to(X[:,0] == casadi.DM([0,X0[1],X0[2],X0[3],X0[4],X0[5],X0[6]]))
@@ -421,9 +442,9 @@ def optimize(X0):
     sql_steer=float(sol_steer[0])       
     sql_omega=float(sol_omega[0])
     
-    sql_query = "insert into {} values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)".format(table_name)
+    sql_query = "insert into {} values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)".format(table_name)
     cur.execute(sql_query,
-        (computation_time,sql_phi,sql_vx,sql_vy,sql_steer,sql_omega,sql_front_wheel_alpha,sql_rear_wheel_alpha,sql_front_fx,sql_rear_fx,sql_front_fy,sql_rear_fy,s0,sql_ptx,sql_pty,error))
+        (computation_time,sql_phi,sql_vx,sql_vy,sql_steer,sql_omega,sql_front_wheel_alpha,sql_rear_wheel_alpha,sql_front_fx,sql_rear_fx,sql_front_fy,sql_rear_fy,s0,ds,float(best_order),sql_ptx,sql_pty,error))
     con.commit()
     
     #X = [tau,n,phi,v]
