@@ -24,10 +24,10 @@ d_max: 1.0
 d_min: -1.0
 v_max: 10000
 v_min: 0.1
-delta_min: -0.6  # minimum steering angle [rad]
-delta_max: 0.6
-delta_dot_min: -10
-delta_dot_max: 10
+delta_min: -0.436  # minimum steering angle [rad]
+delta_max: 0.436
+delta_dot_min: -1
+delta_dot_max: 1
 
 
 

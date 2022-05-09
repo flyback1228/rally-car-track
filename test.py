@@ -1,3 +1,4 @@
+import imp
 import casadi
 import numpy as np
 from track import SymbolicTrack
@@ -5,44 +6,52 @@ from poly_track import PolynomialTrack
 import matplotlib.pyplot as plt
 from scipy import interpolate
 from poly_track import PolyPath
+from simulation_twowheeldrivebycicle_nwh_no_long_update_v6 import convertXYtoSN,convertSNtoXY
 
-waypoints = np.genfromtxt('tracks/temp_nwh.csv', delimiter=',')
-n = len(waypoints)
+#check_pos = [-282,41]
+check_pos =[-286.3,24.7]
+track = SymbolicTrack('tracks/temp_nwh.csv',5)
+tau0,n0 = track.convertXYtoTN(check_pos)
+s0 = float(track.getSFromT(tau0))
 
-waypoints = np.vstack([waypoints,waypoints[0,:]])
+ds = 100
+s0_array = np.arange(s0-2,s0 + ds,min(ds/200,0.2))
 
-t = np.arange(0, n+1)
-resolution = 100
-print(t.shape)
-print(waypoints.shape)
-circle = interpolate.interp1d(t,waypoints,kind='cubic',axis=0,fill_value = 'extrapolate')
-ts = np.linspace(0, n+1, (n+1)*resolution,endpoint=False)
-print(ts)
-center_line = circle(ts)
-d = center_line[1:,:] - center_line[0:-1,:]
-ds = np.linalg.norm(d,ord=2,axis=1)        
-ds = np.insert(ds,0,0.0)
-s = np.cumsum(ds)
+tau_array = casadi.reshape(track.getTFromS(s0_array),1,len(s0_array))   
+pos = track.pt_t(tau_array)    
+pos = np.array(pos).reshape(len(s0_array),2)
 
-my_track = SymbolicTrack('tracks/temp_nwh.csv',5)
+#polynomial fitting    
+x_axis = s0_array - s0
+sum_array =[]
+for order in range(3,20):
+    coeff = np.polyfit(x_axis,pos,order)    
+    x_poly = np.polyval(coeff[:,0],x_axis)
+    y_poly = np.polyval(coeff[:,1],x_axis)
+    poly_val = np.vstack([x_poly,y_poly]).T
+    norm_array = np.linalg.norm(poly_val-pos,axis=-1)
+    sum_norm = np.sum(norm_array)
+    sum_array.append(sum_norm)
+    if sum_norm/200<0.1:
+        break
 
-t = np.linspace(2,6,100).reshape(1,100)
-#pos = my_track.convertParameterToPos(t,np.zeros(100),500);
-pos = my_track.pt_t(t)
-pos = np.array(pos).reshape(100,2)
-print(pos.shape)
+ref_x = np.polyval(coeff[:,0],x_axis)
+ref_y = np.polyval(coeff[:,1],x_axis)
 
-p = np.polyfit(t.reshape(100,),pos,5)
-print(p)
+best_order = np.argmin(sum_array)+3    
+print(f"ds: {ds}, order: {best_order}, sum norm {sum_array[best_order-3]}")   
+coeff = np.polyfit(x_axis,pos,best_order)
 
 
+s_new,n_new = convertXYtoSN(track,coeff,check_pos,s0)
+print([s_new,n_new])
 
-polyval_x = np.polyval(p[:,0],t.reshape(100,))
-polyval_y = np.polyval(p[:,1],t.reshape(100,))
+x_new,y_new = convertSNtoXY(coeff,[s_new,n_new])
+print([x_new,y_new])
 
-plt.plot(polyval_x,polyval_y,'-*r')
-
-polytrack = PolynomialTrack('tracks/temp_nwh.csv',5)
-#plt.plot(my_track.center_line[:,0],my_track.center_line[:,1])
-plt.plot(polytrack.center_line[:,0],polytrack.center_line[:,1])
+fig,ax = plt.subplots()
+track.plot(ax)
+plt.plot(ref_x,ref_y)
+plt.plot(check_pos[0],check_pos[1],'*g')
+plt.plot(x_new,y_new,'*r')
 plt.show()

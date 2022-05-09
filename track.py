@@ -351,9 +351,14 @@ if __name__ == '__main__':
     #at = np.(angle, 1)
     #fig4 = plt.figure()
     #plt.plot(angle,at)
-    print(my_track.convertXYtoTN([44,154]))
-    print(my_track.convertXYtoTN([18,139]))
-    data = np.array([[44,154],[18,139]])
+    p1 = my_track.convertXYtoTN([44,164])
+    p2 = my_track.convertXYtoTN([18,149])
+    print(p1)
+    print(p2)
+    data = np.array([[44,164],[18,149]])
+    
+    print(my_track.convertParameterToPos([p1[0]],[p1[1]],1))
+    print(my_track.convertParameterToPos([p2[0]],[p2[1]],1))
     
     avg_kappa_t = my_track.t_to_avg_kappa_lookup(ts)
     fig4 = plt.figure()
