@@ -282,6 +282,10 @@ class SymbolicTrack:
         return self.s_to_t_lookup(s)
     
     def getSFromT(self,t):
+        while(t<0):
+            t = t + self.max_t
+        while(t>self.max_t):
+            t = t-self.max_t
         return self.t_to_s_lookup(t)
     
     def getAvgKappaFromT(self,t):

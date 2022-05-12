@@ -39,7 +39,7 @@ delta_dot_max = params['delta_dot_max']
 
 
 #initial state
-tau0 = 1
+tau0 = 25
 s0 = track.getSFromT(tau0)
 init_s0 = float(s0)
 v0 = 0.01
@@ -64,7 +64,7 @@ cur.execute("CREATE TABLE {} (computation_time real,phi real, vx real, vy real, 
 
 #casadi options
 option = {}
-option['max_iter']=6000
+option['max_iter']=3000
 option['tol'] = 1e-6
 option['print_level']=0
 option['linear_solver']='ma27'
@@ -135,14 +135,14 @@ def forwardModel(X,U):
     )
 
 #convert global (x,y) to local (s,n)
-def convertXYtoSN(track,coeff,pos,s0):    
+def convertXYtoSN(track,coeff,pos,s0_guess = 0):    
     
     x1 = float(pos[0])
     y1 = float(pos[1])
     ref_t,_ = track.convertXYtoTN([x1,y1])
     assert(ref_t!=-1)
-    ref_s = float(track.getSFromT(ref_t))-s0
-    
+    #ref_s = float(track.getSFromT(ref_t))-s0
+  
     x = np.poly1d(coeff[:,0])
     y = np.poly1d(coeff[:,1])
     
@@ -152,7 +152,7 @@ def convertXYtoSN(track,coeff,pos,s0):
     raw_roots = np.roots(f)
     raw_roots = np.real(raw_roots[np.imag(raw_roots)==0])
         
-    abs_root = np.abs(raw_roots - float(ref_s))        
+    abs_root = np.abs(raw_roots - s0_guess)        
     idx = np.argmin(abs_root)    
     root = raw_roots[idx]
     assert(np.imag(root)==0)
@@ -200,17 +200,26 @@ def optimize(y0):
     
      #find the polymonial fitting range, from -2 to s0+ds, ds is estimated from last step 
     if sol_x is not None:        
-        ds = float(sol_x[0,-1]) + cd / 50*dt     
-    s0_array = np.arange(s0-2,s0 + ds,min(ds/200,0.2))
+        ds = max(float(sol_x[0,-1]) + cd / 50*dt,80)  
+    s0_array = np.arange(s0-2,s0 + ds,min(ds/100,0.2))
     
-    tau_array = casadi.reshape(track.getTFromS(s0_array),1,len(s0_array))   
-    pos = track.pt_t(tau_array)    
-    pos = np.array(pos).reshape(len(s0_array),2)
+    #tau_array = casadi.reshape(track.getTFromS(s0_array),1,len(s0_array))   
+    pos = np.zeros([len(s0_array),2])
     
+    for i in range(len(s0_array)):
+        temp_s = s0_array[i]
+        if(temp_s<0):
+            temp_t = track.getTFromS(temp_s+track.max_s)
+        elif temp_s>track.max_s:
+            temp_t = track.getTFromS(temp_s-track.max_s)
+        else:
+            temp_t = track.getTFromS(temp_s)
+        pos[i,:] = track.pt_t(temp_t) 
+            
     #polynomial fitting    
     x_axis = s0_array - s0
     sum_array =[]
-    for order in range(3,20):
+    for order in range(1,20):
         coeff = np.polyfit(x_axis,pos,order)    
         x_poly = np.polyval(coeff[:,0],x_axis)
         y_poly = np.polyval(coeff[:,1],x_axis)
@@ -218,15 +227,18 @@ def optimize(y0):
         norm_array = np.linalg.norm(poly_val-pos,axis=-1)
         sum_norm = np.sum(norm_array)
         sum_array.append(sum_norm)
-        if sum_norm/200<0.05:
+        if sum_norm/len(x_axis)<0.05:
             break
         
-    best_order = np.argmin(sum_array)+3    
-    print(f"ds: {ds}, order: {best_order}, sum norm {sum_array[best_order-3]}")       
+    best_order = np.argmin(sum_array)+1   
+    print(f"ds: {ds}, order: {best_order}, sum norm {sum_array[best_order-1]}")       
     #weight = np.linspace(2,0.5,len(x_axis)) #weight can be added
     coeff = np.polyfit(x_axis,pos,best_order)
 
-    s_new,n_new = convertXYtoSN(track,coeff,y0[0:2],s0)
+    try:
+        s_new,n_new = convertXYtoSN(track,coeff,y0[0:2])
+    except Exception as e:
+        print(e)
     X0 = casadi.veccat(float(s_new),float(n_new),float(y0[2]),float(y0[3]),float(y0[4]),float(y0[5]),float(y0[6]))
     
     #construct the symbolic polynomial    
@@ -321,8 +333,12 @@ def optimize(y0):
         yt = copy.deepcopy(y0)
         for i in range(1,N+1):            
             yt = yt+dt*forwardModel(yt,guess_U[:,i-1])
-            t_guess,n_guess = convertXYtoSN(track,coeff,yt[0:2],s0)
+            t_guess,n_guess = convertXYtoSN(track,coeff,yt[0:2],float(sol_x[0,i]))
             guess_X[:,i] = casadi.vertcat(float(t_guess),float(n_guess),float(yt[2]),float(yt[3]),float(yt[4]),float(yt[5]),float(yt[6]))
+    
+    ds_guess = guess_X[0,1:] - guess_X[0,0:-1]
+    
+    assert(np.all(np.array(ds_guess))>=0)
     
  
     opti.set_initial(X,guess_X)
@@ -333,7 +349,11 @@ def optimize(y0):
     try:
         sol = opti.solve()   # actual solve 
     except Exception as e:
-        print(e) 
+        plt.plot(pos[:,0],pos[:,1])
+        plt.show()
+        print(guess_X)
+        print(e)  
+               
         exit()
         
 
@@ -352,7 +372,7 @@ def optimize(y0):
     sql_pty = ','.join("{:0.2f}".format(float(plane_x[1,i])) for i in range(N+1))
     
     co = np.resize(coeff,(2*len(coeff),))
-    sql_coeff = ','.join("{:0.6f}".format(co[i]) for i in range(len(co)))
+    sql_coeff = ','.join("{:0.3e}".format(co[i]) for i in range(len(co)))
     
     sql_phi = float(sol.value(phi_sym_array)[0])    
     sql_vx=float(sol.value(vx_sym_array)[0])
@@ -384,6 +404,8 @@ if __name__=='__main__':
         y0 =optimize(y0)
         temp_t,temp_n = track.convertXYtoTN([float(y0[0]),float(y0[1])])
         s0 = track.getSFromT(temp_t)
+        if s0-init_s0<0:
+            s0 = s0+track.max_s
         print(f"finished: {float((s0-init_s0)/track.max_s)*100:.2f}%")
         print(y0)
     
