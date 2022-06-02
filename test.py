@@ -1,57 +1,26 @@
-import imp
 import casadi
 import numpy as np
-from track import SymbolicTrack
-from poly_track import PolynomialTrack
-import matplotlib.pyplot as plt
-from scipy import interpolate
-from poly_track import PolyPath
-from simulation_twowheeldrivebycicle_nwh_no_long_update_v6 import convertXYtoSN,convertSNtoXY
+import casadi
+ptxs='-28.60,-28.60,-28.59,-28.57,-28.55,-28.52,-28.48,-28.43,-28.37,-28.31,-28.23,-28.15,-28.06,-27.97,-27.86,-27.75,-27.63,-27.50,-27.37,-27.22,-27.07,-26.91,-26.74,-26.56,-26.38,-26.19,-25.99,-25.78,-25.57,-25.34,-25.11,-24.87,-24.63,-24.37,-24.11,-23.84,-23.56,-23.28,-22.98,-22.68,-22.38,-22.06,-21.74,-21.40,-21.07,-20.72,-20.36,-20.00,-19.63,-19.26,-18.87,-18.48,-18.08,-17.68,-17.26,-16.84,-16.41,-15.98,-15.54,-15.09,-14.63,-14.17,-13.69,-13.22,-12.73,-12.24,-11.74,-11.23,-10.72,-10.20,-9.67,-9.14,-8.60,-8.05,-7.50,-6.94,-6.37,-5.80,-5.22,-4.63,-4.04,-3.44,-2.83,-2.22,-1.61,-0.98,-0.35,0.28,0.92,1.57,2.22'
+ptys = '-33.60,-33.60,-33.60,-33.59,-33.59,-33.58,-33.57,-33.56,-33.55,-33.53,-33.52,-33.50,-33.48,-33.45,-33.43,-33.40,-33.37,-33.34,-33.30,-33.27,-33.23,-33.19,-33.15,-33.10,-33.05,-33.00,-32.95,-32.90,-32.84,-32.78,-32.72,-32.65,-32.59,-32.52,-32.44,-32.37,-32.29,-32.21,-32.12,-32.04,-31.95,-31.86,-31.76,-31.66,-31.56,-31.45,-31.34,-31.23,-31.12,-31.00,-30.88,-30.75,-30.62,-30.49,-30.35,-30.21,-30.07,-29.92,-29.77,-29.61,-29.45,-29.29,-29.12,-28.95,-28.77,-28.59,-28.40,-28.21,-28.02,-27.82,-27.61,-27.40,-27.19,-26.97,-26.74,-26.51,-26.28,-26.04,-25.79,-25.54,-25.28,-25.02,-24.75,-24.48,-24.20,-23.91,-23.62,-23.32,-23.02,-22.71,-22.39'
+ptx = np.fromstring(ptxs, dtype=float, sep=',')
+pty = np.fromstring(ptys, dtype=float, sep=',')
 
-#check_pos = [-282,41]
-check_pos =[-286.3,24.7]
-track = SymbolicTrack('tracks/temp_nwh.csv',5)
-tau0,n0 = track.convertXYtoTN(check_pos)
-s0 = float(track.getSFromT(tau0))
+row=len(ptx)
+global_pts = np.array([[ptx[i],pty[i]] for i in range(row)])
+print(global_pts)
 
-ds = 100
-s0_array = np.arange(s0-2,s0 + ds,min(ds/200,0.2))
-
-tau_array = casadi.reshape(track.getTFromS(s0_array),1,len(s0_array))   
-pos = track.pt_t(tau_array)    
-pos = np.array(pos).reshape(len(s0_array),2)
-
-#polynomial fitting    
-x_axis = s0_array - s0
-sum_array =[]
-for order in range(3,20):
-    coeff = np.polyfit(x_axis,pos,order)    
-    x_poly = np.polyval(coeff[:,0],x_axis)
-    y_poly = np.polyval(coeff[:,1],x_axis)
-    poly_val = np.vstack([x_poly,y_poly]).T
-    norm_array = np.linalg.norm(poly_val-pos,axis=-1)
-    sum_norm = np.sum(norm_array)
-    sum_array.append(sum_norm)
-    if sum_norm/200<0.1:
-        break
-
-ref_x = np.polyval(coeff[:,0],x_axis)
-ref_y = np.polyval(coeff[:,1],x_axis)
-
-best_order = np.argmin(sum_array)+3    
-print(f"ds: {ds}, order: {best_order}, sum norm {sum_array[best_order-3]}")   
-coeff = np.polyfit(x_axis,pos,best_order)
+a=[1,3,4]
+print(ptx[a])
 
 
-s_new,n_new = convertXYtoSN(track,coeff,check_pos,s0)
-print([s_new,n_new])
+print(np.arange(2,7,2))
 
-x_new,y_new = convertSNtoXY(coeff,[s_new,n_new])
-print([x_new,y_new])
+dm = casadi.DM([[1,2,3],[4,5,6]])
+print(casadi.norm_fro(dm))
+print(np.linalg.norm(dm))
 
-fig,ax = plt.subplots()
-track.plot(ax)
-plt.plot(ref_x,ref_y)
-plt.plot(check_pos[0],check_pos[1],'*g')
-plt.plot(x_new,y_new,'*r')
-plt.show()
+a=np.array([1,2,3])
+b=np.array([3,4,5])
+c = np.vstack((a,b))
+print(c)

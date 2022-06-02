@@ -4,7 +4,7 @@ m: 1485 #[kg]
 lf: 1.156 #[m]
 lr: 1.507 #[m]
 
-Iz:  2161 #[kg*m^3]
+Iz:  2168 #[kg*m^3]
 width: 1
 
 wheel_radius: 0.335

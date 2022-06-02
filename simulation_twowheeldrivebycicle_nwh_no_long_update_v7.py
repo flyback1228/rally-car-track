@@ -7,7 +7,7 @@ from datetime import datetime
 import math
 import copy
 
-track_width = 6
+track_width = 7
 track = SymbolicTrack('tracks/temp_nwh.csv', track_width)
 
 # define tire mode
@@ -37,7 +37,7 @@ delta_dot_min = params['delta_dot_min']
 delta_dot_max = params['delta_dot_max']
 
 # initial state
-tau0 = 25
+tau0 = 0
 s0 = track.getSFromT(tau0)
 init_s0 = float(s0)
 v0 = 0.01
@@ -60,12 +60,13 @@ table_name = 'unity' + now.strftime("_%m_%d_%Y_%H_%M_%S")
 cur.execute(
     "CREATE TABLE {} (computation_time real,phi real, vx real, vy real, steer real,omega real,front_wheel_alpha real,"
     "rear_wheel_alpha real,front_fx real, rear_fx real,front_fy real, rear_fy real,s real,ds real,poly_order real,"
+    "throttle real,front_brake real,rear_brake real,"
     "ptx text,pty text,coeff text)".format(
         table_name))
 
 # casadi options
-option = {'max_iter': 3000, 'tol': 1e-6, 'print_level': 0}
-# option['linear_solver'] = 'ma27'
+option = {'max_iter': 6000, 'tol': 1e-6, 'print_level': 0}
+option['linear_solver'] = 'ma27'
 
 casadi_option = {}
 # casadi_option['print_time']=False
@@ -83,12 +84,13 @@ sol_x = None
 sol_u = None
 
 # throttle parmas, F_f = cd*d -cm1*v-cm0
-cd = 5000
+cd = 6000
 cm1 = 0.3
 
-cm2 = 50
-cm0 = 0
-cb = 10000
+cm2 = 30
+cm0 = 500
+cbf = 7000
+cbr = 7000
 
 guess_X = casadi.DM.zeros(nx, N + 1)
 guess_U = casadi.DM.zeros(nu, N)
@@ -110,8 +112,8 @@ def forwardModel(X, U):
     front_brake = U[2]
     rear_brake = U[3]
 
-    fx_f = cd * throttle - cm0 - cm1 * vx * vx - cm2 * vy * vy - cb * front_brake
-    fx_r = cd * throttle - cm0 - cm1 * vx * vx - cm2 * vy * vy - cb * rear_brake
+    fx_f = cd * throttle - cm0 - cm1 * vx * vx - cm2 * vy * vy - cbf * front_brake
+    fx_r = cd * throttle - cm0 - cm1 * vx * vx - cm2 * vy * vy - cbr * rear_brake
 
     alpha_f = -casadi.atan2(omega * lf + vy, vx) + delta
     alpha_r = casadi.atan2(omega * lr - vy, vx)
@@ -283,8 +285,8 @@ def optimize(y):
     kappa_sym_array = f_kappa(s_sym_array[0:-1])
     dphi_c_sym_array = phi_sym_array[0:-1] - f_phi(s_sym_array[0:-1])
 
-    fx_f_sym_array = cd * throttle_array - cm0 - cm1 * vx_sym_array[0:-1] * vx_sym_array[0:-1] - cm2 * vy_sym_array[0:-1] * vy_sym_array[0:-1] - cb * front_brake_array
-    fx_r_sym_array = cd * throttle_array - cm0 - cm1 * vx_sym_array[0:-1] * vx_sym_array[0:-1] - cm2 * vy_sym_array[0:-1] * vy_sym_array[0:-1] - cb * rear_brake_array
+    fx_f_sym_array = cd * throttle_array - cm0 - cm1 * vx_sym_array[0:-1] * vx_sym_array[0:-1] - cm2 * vy_sym_array[0:-1] * vy_sym_array[0:-1] - cbf * front_brake_array
+    fx_r_sym_array = cd * throttle_array - cm0 - cm1 * vx_sym_array[0:-1] * vx_sym_array[0:-1] - cm2 * vy_sym_array[0:-1] * vy_sym_array[0:-1] - cbr * rear_brake_array
 
     alpha_f = -casadi.atan2(omega_sym_array[0:-1] * lf + vy_sym_array[0:-1], vx_sym_array[0:-1]) + delta_sym_array[0:-1]
     alpha_r = casadi.atan2(omega_sym_array[0:-1] * lr - vy_sym_array[0:-1], vx_sym_array[0:-1])
@@ -310,8 +312,8 @@ def optimize(y):
     X_dot[6, :] = delta_dot_sym_array
 
     # objective
-    n_obj = (casadi.atan(5 * (n_sym_array ** 2 - (track_width / 2) ** 2)) + casadi.pi / 2) * 50
-    opti.minimize(-1000 * (s_sym_array[-1]) + casadi.dot(n_obj, n_obj))
+    n_obj = (casadi.atan(5 * (n_sym_array ** 2 - (track_width / 2) ** 2)) + casadi.pi / 2) * 120
+    opti.minimize(-100 * (s_sym_array[-1]) + casadi.dot(n_obj, n_obj))
 
     # initial condition
     opti.subject_to(X[:, 0] == X0)
@@ -321,7 +323,7 @@ def optimize(y):
 
     # state bound
     # opti.subject_to(opti.bounded(0.0,vx_sym_array,v_max))
-    opti.subject_to(opti.bounded(-track_width / 2, n_sym_array, track_width / 2))
+    #opti.subject_to(opti.bounded(-track_width / 2, n_sym_array, track_width / 2))
     opti.subject_to(opti.bounded(delta_min, delta_sym_array, delta_max))
 
     # input bound
@@ -395,10 +397,15 @@ def optimize(y):
     sql_steer = float(sol.value(delta_sym_array)[0])
     sql_omega = float(sol.value(omega_sym_array)[0])
 
-    sql_query = "insert into {} values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)".format(table_name)
+    sql_front_brake = float(sol.value(front_brake_array)[0])
+    sql_rear_brake = float(sol.value(rear_brake_array)[0])
+    sql_throttle = float(sol.value(throttle_array)[0])
+
+    sql_query = "insert into {} values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)".format(table_name)
     cur.execute(sql_query,
                 (computation_time, sql_phi, sql_vx, sql_vy, sql_steer, sql_omega, sql_front_wheel_alpha,
                  sql_rear_wheel_alpha, sql_front_fx, sql_rear_fx, sql_front_fy, sql_rear_fy, s0, ds, float(best_order),
+                 sql_throttle,sql_front_brake,sql_rear_brake,
                  sql_ptx, sql_pty, sql_coeff))
     con.commit()
 
